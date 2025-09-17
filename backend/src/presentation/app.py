@@ -2,21 +2,27 @@
 FastAPI application entry point.
 """
 import logging
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+# Initialize job queue before any router imports
+from ..infrastructure.queue.job_queue import init_job_queue
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+print(f"DEBUG: REDIS_URL env var: {os.getenv('REDIS_URL')}")
+print(f"DEBUG: Using Redis URL: {redis_url}")
+init_job_queue(redis_url)
+
 from .api.routers import books, tricks, search, statistics, jobs
-from .api.routers.review import create_review_router
+# TODO: Review router disabled - AI training moved to ai-service
+# from .api.routers.review import create_review_router
 from ..application.use_cases.magic_use_cases import SearchTricksUseCase
 from ..infrastructure.config import Config
 from ..infrastructure.database.database import DatabaseManager
 from ..infrastructure.queue.job_queue import JobQueue
 from ..infrastructure.repositories.sql_repositories import (
     SQLTrickRepository, SQLBookRepository
-)
-from ..infrastructure.ai.model_training import (
-    TrainingDataGenerator, ModelFineTuner, AdaptiveTrickDetector
 )
 
 # Global configuration and database manager
@@ -40,8 +46,9 @@ def create_app() -> FastAPI:
     db_manager = DatabaseManager(config)
     db_manager.initialize()
     
-    # Initialize job queue
-    job_queue = JobQueue()
+    # Job queue is already initialized at module level
+    from ..infrastructure.queue.job_queue import get_job_queue
+    job_queue = get_job_queue()
     
     logger = logging.getLogger(__name__)
     logger.info("Starting Magic Trick Analyzer API...")
@@ -82,27 +89,22 @@ def create_app() -> FastAPI:
     book_repository = SQLBookRepository(db_manager)
     search_use_case = SearchTricksUseCase(trick_repository, book_repository)
     
-    # Initialize training components
-    training_data_generator = TrainingDataGenerator(trick_repository, "data/user_feedback.json")
-    model_fine_tuner = ModelFineTuner(config.ai.sentence_transformer_model, "temp/magic-tuned-model")
-    adaptive_detector = AdaptiveTrickDetector(config.ai.sentence_transformer_model, "temp/magic-tuned-model")
-    
-    # Create routers with dependencies
+    # Create routers with dependencies - all AI/OCR work delegated to dedicated services
     from ..application.use_cases.magic_use_cases import (
         ProcessBooksUseCase, GetBookStatisticsUseCase, FindSimilarTricksUseCase
     )
     from ..application.services.pdf_processing import PDFProcessingService
-    from ..infrastructure.pdf.pdf_extractor import PDFTextExtractor  
-    from ..infrastructure.ai.trick_detector import TrickDetector
+    from ..infrastructure.pdf.pdf_extractor import PDFTextExtractor
     
-    # Create infrastructure services
-    pdf_extractor = PDFTextExtractor(enable_ocr=True)
-    trick_detector = TrickDetector(model_name="all-MiniLM-L6-v2")
+    # Create infrastructure services - simplified without AI/OCR
+    # All AI processing delegated to ai-service via job queue
+    # All OCR processing delegated to ocr-service via job queue
+    pdf_extractor = PDFTextExtractor(enable_ocr=False)  # OCR disabled - use ocr-service instead
     pdf_processing_service = PDFProcessingService(
         book_repository=book_repository,
         trick_repository=trick_repository,
         pdf_extractor=pdf_extractor,
-        trick_detector=trick_detector
+        trick_detector=None  # All AI processing delegated to ai-service
     )
     
     # Create use cases
@@ -136,16 +138,17 @@ def create_app() -> FastAPI:
     except Exception as e:
         logger.warning(f"Failed to load cross-reference router: {e}")
     
-    review_router = create_review_router(
-        trick_repository=trick_repository,
-        book_repository=book_repository,
-        search_use_case=search_use_case,
-        training_data_generator=training_data_generator,
-        model_fine_tuner=model_fine_tuner,
-        adaptive_detector=adaptive_detector
-    )
-    
-    app.include_router(review_router, prefix="/api/v1/review", tags=["Review"])
+    # TODO: Review router disabled - AI training moved to ai-service
+    # review_router = create_review_router(
+    #     trick_repository=trick_repository,
+    #     book_repository=book_repository,
+    #     search_use_case=search_use_case,
+    #     training_data_generator=training_data_generator,
+    #     model_fine_tuner=model_fine_tuner,
+    #     adaptive_detector=adaptive_detector
+    # )
+    # 
+    # app.include_router(review_router, prefix="/api/v1/review", tags=["Review"])
     
     @app.get("/")
     async def root():

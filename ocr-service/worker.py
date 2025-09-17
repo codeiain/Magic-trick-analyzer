@@ -8,7 +8,7 @@ import os
 import sys
 import logging
 from redis import Redis
-from rq import Worker, Queue, Connection
+from rq import Worker, Queue
 
 # Add current directory to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -46,15 +46,14 @@ def main():
         sys.exit(1)
     
     # Create queue
-    queue = Queue('ocr_queue', connection=redis_conn)
+    queue = Queue('ocr', connection=redis_conn)
     
     logger.info("Starting OCR worker...")
     
     # Start worker
-    with Connection(redis_conn):
-        worker = Worker([queue], name=f"ocr-worker-{os.getpid()}")
-        logger.info(f"Worker started: {worker.name}")
-        worker.work(with_scheduler=True)
+    worker = Worker([queue], connection=redis_conn, name=f"ocr-worker-{os.getpid()}")
+    logger.info(f"Worker started: {worker.name}")
+    worker.work(with_scheduler=True)
 
 if __name__ == '__main__':
     main()

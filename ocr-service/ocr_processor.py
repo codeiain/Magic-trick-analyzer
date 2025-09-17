@@ -8,6 +8,7 @@ import os
 import logging
 import tempfile
 import shutil
+import requests
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
@@ -186,6 +187,78 @@ class OCRProcessor:
             'confidence': confidence
         }
 
+def trigger_ai_processing(book_id: str, text_content: str, parent_job_id: str = '') -> Optional[str]:
+    """Trigger AI processing by sending a request to the backend job queue"""
+    try:
+        backend_url = os.getenv('BACKEND_URL', 'http://backend:8000')
+        ai_queue_endpoint = f"{backend_url}/api/v1/jobs/ai/queue"
+        
+        # Prepare the AI processing job data
+        ai_job_data = {
+            'book_id': book_id,
+            'text_content': text_content,
+            'parent_job_id': parent_job_id,
+            'source': 'ocr_service',
+            'queued_at': datetime.utcnow().isoformat()
+        }
+        
+        logger.info(f"Triggering AI processing for book_id: {book_id}")
+        
+        # Send request to backend to queue AI job
+        response = requests.post(
+            ai_queue_endpoint,
+            json=ai_job_data,
+            timeout=30,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            ai_job_id = result.get('job_id')
+            logger.info(f"AI processing job queued successfully: {ai_job_id}")
+            return ai_job_id
+        else:
+            logger.error(f"Failed to queue AI processing job: {response.status_code} - {response.text}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error triggering AI processing: {e}")
+        logger.error(traceback.format_exc())
+        return None
+
+def update_job_status_with_ai_info(ocr_job_id: str, ai_job_id: str, ocr_result: Dict[str, Any]):
+    """Update OCR job status to include AI job information"""
+    try:
+        backend_url = os.getenv('BACKEND_URL', 'http://backend:8000')
+        update_endpoint = f"{backend_url}/api/v1/jobs/{ocr_job_id}/ai-info"
+        
+        update_data = {
+            'ai_job_id': ai_job_id,
+            'ocr_completed': True,
+            'ai_queued': True,
+            'ocr_result': {
+                'character_count': ocr_result.get('validation', {}).get('character_count', 0),
+                'confidence': ocr_result.get('validation', {}).get('confidence', 0),
+                'database_saved': ocr_result.get('database_saved', False)
+            },
+            'updated_at': datetime.utcnow().isoformat()
+        }
+        
+        response = requests.patch(
+            update_endpoint,
+            json=update_data,
+            timeout=10,
+            headers={'Content-Type': 'application/json'}
+        )
+        
+        if response.status_code == 200:
+            logger.info(f"Updated OCR job {ocr_job_id} with AI job info: {ai_job_id}")
+        else:
+            logger.warning(f"Failed to update OCR job status: {response.status_code} - {response.text}")
+            
+    except Exception as e:
+        logger.error(f"Error updating OCR job status: {e}")
+
 # RQ job function (called by the worker)
 
 def process_pdf(job_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -198,6 +271,8 @@ def process_pdf(job_data: Dict[str, Any]) -> Dict[str, Any]:
         
         file_path = job_data['file_path']
         book_id = job_data['book_id']
+        book_metadata = job_data.get('book_metadata', {})
+        title = book_metadata.get('title', 'Unknown Title')
         
         # Check if file exists
         if not os.path.exists(file_path):
@@ -210,22 +285,83 @@ def process_pdf(job_data: Dict[str, Any]) -> Dict[str, Any]:
         # Validate extraction
         validation = processor.validate_extracted_text(extracted_text)
         
+        # Save results to database
+        from database import save_book_ocr_results
+        database_saved = save_book_ocr_results(
+            book_id=book_id,
+            title=title,
+            file_path=file_path,
+            text_content=extracted_text,
+            confidence=validation['confidence'],
+            character_count=validation['character_count']
+        )
+        
         result = {
             'status': 'completed',
             'book_id': book_id,
             'file_path': file_path,
             'text_content': extracted_text,
             'validation': validation,
-            'processed_at': datetime.utcnow().isoformat()
+            'database_saved': database_saved,
+            'processed_at': datetime.utcnow().isoformat(),
+            'next_stage': 'ai_processing'  # Indicate next stage
         }
         
-        logger.info(f"OCR processing completed: {validation['character_count']} characters, confidence: {validation['confidence']}")
+        # Trigger AI processing if we have sufficient text content
+        ai_job_id = None
+        if validation['character_count'] > 50:  # Only process if we have reasonable text
+            try:
+                ai_job_id = trigger_ai_processing(book_id, extracted_text, job_data.get('parent_job_id', ''))
+                if ai_job_id:
+                    result['ai_job_id'] = ai_job_id
+                    result['ai_status'] = 'queued'
+                    logger.info(f"AI processing queued: job_id={ai_job_id}")
+                else:
+                    result['ai_status'] = 'failed_to_queue'
+            except Exception as ai_error:
+                logger.error(f"Failed to trigger AI processing: {ai_error}")
+                result['ai_status'] = 'failed_to_queue'
+                result['ai_error'] = str(ai_error)
+        else:
+            result['ai_status'] = 'skipped_insufficient_text'
+            logger.info(f"Skipping AI processing: insufficient text content ({validation['character_count']} characters)")
+        
+        # Update job status with OCR completion and AI job info
+        if ai_job_id:
+            # Update the original OCR job to indicate AI processing has been queued
+            update_job_status_with_ai_info(
+                ocr_job_id=job_data.get('parent_job_id', ''),
+                ai_job_id=ai_job_id,
+                ocr_result=result
+            )
+        
+        logger.info(f"OCR processing completed: {validation['character_count']} characters, confidence: {validation['confidence']}, database_saved: {database_saved}, ai_job_id: {ai_job_id}")
         return result
         
     except Exception as e:
         logger.error(f"OCR processing failed: {e}")
+        
+        # Try to mark book as failed in database
+        try:
+            from database import get_database_connection, BookModel
+            db = get_database_connection()
+            db.create_tables()
+            session = db.get_session()
+            
+            existing_book = session.query(BookModel).filter(BookModel.id == job_data.get('book_id')).first()
+            if existing_book:
+                existing_book.processing_status = 'failed'
+                existing_book.updated_at = datetime.utcnow()
+                session.commit()
+            
+            session.close()
+            db.close()
+        except Exception as db_error:
+            logger.error(f"Failed to update database with error status: {db_error}")
+        
         return {
             'status': 'failed',
+            'book_id': job_data.get('book_id'),
             'error': str(e),
             'processed_at': datetime.utcnow().isoformat()
         }

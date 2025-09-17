@@ -11,7 +11,7 @@ import os
 import sys
 import logging
 import redis
-from rq import Worker, Queue, Connection
+from rq import Worker, Queue
 from dotenv import load_dotenv
 
 # Load environment variables

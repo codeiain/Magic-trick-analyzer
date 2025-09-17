@@ -32,6 +32,20 @@ class JobSubmissionResponse(BaseModel):
     status: str
     message: str
 
+class AIJobRequest(BaseModel):
+    book_id: str
+    text_content: str
+    parent_job_id: Optional[str] = None
+    source: Optional[str] = 'api'
+    queued_at: Optional[str] = None
+
+class JobUpdateRequest(BaseModel):
+    ai_job_id: Optional[str] = None
+    ocr_completed: Optional[bool] = None
+    ai_queued: Optional[bool] = None
+    ocr_result: Optional[Dict[str, Any]] = None
+    updated_at: Optional[str] = None
+
 # Create router
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -94,6 +108,58 @@ async def list_jobs(
     except Exception as e:
         logger.error(f"Error listing jobs: {e}")
         raise HTTPException(status_code=500, detail="Error listing jobs")
+
+@router.patch("/{job_id}/ai-info")
+async def update_job_with_ai_info(
+    job_id: str,
+    update_data: JobUpdateRequest,
+    queue: JobQueue = Depends(get_job_queue)
+):
+    """Update job status with AI processing information"""
+    
+    try:
+        # Update the job status with AI information
+        success = queue.update_job_ai_info(job_id, update_data.dict(exclude_unset=True))
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Job not found")
+        
+        return {
+            "message": f"Job {job_id} updated with AI information",
+            "ai_job_id": update_data.ai_job_id
+        }
+        
+    except Exception as e:
+        logger.error(f"Error updating job {job_id} with AI info: {e}")
+        raise HTTPException(status_code=500, detail=f"Error updating job: {str(e)}")
+
+@router.post("/ai/queue", response_model=JobSubmissionResponse)
+async def queue_ai_job(
+    job_request: AIJobRequest, 
+    queue: JobQueue = Depends(get_job_queue)
+):
+    """Queue an AI processing job"""
+    
+    try:
+        # Queue the AI processing job
+        job_id = queue.enqueue_ai_job(
+            book_id=job_request.book_id,
+            text_content=job_request.text_content,
+            parent_job_id=job_request.parent_job_id,
+            source=job_request.source
+        )
+        
+        logger.info(f"AI job queued: {job_id} for book_id: {job_request.book_id}")
+        
+        return JobSubmissionResponse(
+            job_id=job_id,
+            status="queued",
+            message=f"AI processing job queued successfully"
+        )
+        
+    except Exception as e:
+        logger.error(f"Error queueing AI job: {e}")
+        raise HTTPException(status_code=500, detail=f"Error queueing AI job: {str(e)}")
 
 @router.delete("/")
 async def cleanup_completed_jobs(queue: JobQueue = Depends(get_job_queue)):

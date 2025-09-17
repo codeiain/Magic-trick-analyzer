@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookOpenIcon, DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
+import { BookOpenIcon, DocumentIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { booksApi } from '../lib/api';
 import { useJobStatus } from '../hooks/useJobStatus';
@@ -14,10 +14,10 @@ export default function BooksPage() {
   const queryClient = useQueryClient();
 
   // Job status polling
-  const { jobStatus, isLoading: isJobRunning, error: jobError, cancelJob, isComplete } = useJobStatus(
+  const { jobStatus, isLoading: isJobRunning, cancelJob } = useJobStatus(
     currentJobId,
     {
-      onComplete: (result) => {
+      onComplete: () => {
         setUploadProgress('Processing completed successfully!');
         queryClient.invalidateQueries({ queryKey: ['books'] });
         setTimeout(() => {
@@ -188,31 +188,84 @@ export default function BooksPage() {
                   <p className="text-blue-800 font-semibold">{uploadProgress}</p>
                   {jobStatus && (
                     <div className="mt-2">
-                      <p className="text-sm text-blue-600">
-                        Job ID: <code className="bg-blue-100 px-2 py-1 rounded text-xs">{jobStatus.job_id}</code>
-                      </p>
-                      <p className="text-sm text-blue-600 mt-1">
-                        Status: <span className={`font-medium ${
-                          jobStatus.status === 'finished' ? 'text-green-600' :
-                          jobStatus.status === 'failed' ? 'text-red-600' :
-                          jobStatus.status === 'started' ? 'text-yellow-600' :
-                          'text-blue-600'
-                        }`}>{jobStatus.status}</span>
-                      </p>
-                      {jobStatus.message && (
-                        <p className="text-sm text-gray-600 mt-1">{jobStatus.message}</p>
-                      )}
-                      {jobStatus.progress && (
-                        <div className="mt-2">
-                          <div className="w-full bg-blue-200 rounded-full h-2">
-                            <div 
-                              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
-                              style={{ width: `${jobStatus.progress}%` }}
-                            ></div>
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <h4 className="text-sm font-medium text-blue-900 mb-2">Processing Status</h4>
+                        <p className="text-xs text-gray-700 mb-2">
+                          Job ID: <code className="bg-blue-100 px-2 py-1 rounded text-xs">{jobStatus.job_id}</code>
+                        </p>
+                        
+                        {/* Multi-stage progress display */}
+                        <div className="space-y-2">
+                          {/* OCR Stage */}
+                          <div className="flex items-center space-x-2">
+                            <div className={`w-3 h-3 rounded-full flex items-center justify-center text-xs ${
+                              jobStatus.status === 'finished' ? 'bg-green-500' :
+                              jobStatus.status === 'started' ? 'bg-yellow-500' :
+                              jobStatus.status === 'failed' ? 'bg-red-500' :
+                              'bg-gray-300'
+                            }`}></div>
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-medium">OCR Processing</span>
+                                <span className={`text-xs ${
+                                  jobStatus.status === 'finished' ? 'text-green-600' :
+                                  jobStatus.status === 'failed' ? 'text-red-600' :
+                                  jobStatus.status === 'started' ? 'text-yellow-600' :
+                                  'text-gray-500'
+                                }`}>{jobStatus.status}</span>
+                              </div>
+                              {jobStatus.ocr_result && (
+                                <div className="text-xs text-gray-600">
+                                  {jobStatus.ocr_result.character_count} chars, 
+                                  {Math.round(jobStatus.ocr_result.confidence * 100)}% confidence
+                                </div>
+                              )}
+                            </div>
                           </div>
-                          <p className="text-xs text-blue-600 mt-1">{jobStatus.progress}% complete</p>
+
+                          {/* AI Stage */}
+                          {jobStatus.ai_job_id && (
+                            <div className="flex items-center space-x-2">
+                              <div className={`w-3 h-3 rounded-full flex items-center justify-center text-xs ${
+                                jobStatus.ai_job_status?.status === 'finished' ? 'bg-green-500' :
+                                jobStatus.ai_job_status?.status === 'started' ? 'bg-yellow-500' :
+                                jobStatus.ai_job_status?.status === 'failed' ? 'bg-red-500' :
+                                jobStatus.ai_queued ? 'bg-blue-500' :
+                                'bg-gray-300'
+                              }`}></div>
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-medium">AI Analysis</span>
+                                  <span className={`text-xs ${
+                                    jobStatus.ai_job_status?.status === 'finished' ? 'text-green-600' :
+                                    jobStatus.ai_job_status?.status === 'failed' ? 'text-red-600' :
+                                    jobStatus.ai_job_status?.status === 'started' ? 'text-yellow-600' :
+                                    jobStatus.ai_queued ? 'text-blue-600' :
+                                    'text-gray-500'
+                                  }`}>
+                                    {jobStatus.ai_job_status?.status || (jobStatus.ai_queued ? 'queued' : 'waiting')}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
+
+                        {jobStatus.message && (
+                          <p className="text-xs text-gray-600 mt-2">{jobStatus.message}</p>
+                        )}
+                        {jobStatus.progress && (
+                          <div className="mt-2">
+                            <div className="w-full bg-blue-200 rounded-full h-2">
+                              <div 
+                                className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                                style={{ width: `${jobStatus.progress}%` }}
+                              ></div>
+                            </div>
+                            <p className="text-xs text-blue-600 mt-1">{jobStatus.progress}% complete</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -260,7 +313,7 @@ export default function BooksPage() {
             <div className="ml-4">
               <p className="text-sm font-semibold text-slate-600">Processed</p>
               <p className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-emerald-800 bg-clip-text text-transparent">
-                {books.filter(book => book.processed_at).length}
+                {books.filter((book: Book) => book.processed_at).length}
               </p>
             </div>
           </div>
@@ -276,7 +329,7 @@ export default function BooksPage() {
             <div className="ml-4">
               <p className="text-sm font-semibold text-slate-600">Processing</p>
               <p className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-yellow-800 bg-clip-text text-transparent">
-                {books.filter(book => !book.processed_at).length}
+                {books.filter((book: Book) => !book.processed_at).length}
               </p>
             </div>
           </div>
@@ -290,7 +343,7 @@ export default function BooksPage() {
             <div className="ml-4">
               <p className="text-sm font-semibold text-slate-600">Total Tricks</p>
               <p className="text-2xl font-bold bg-gradient-to-r from-slate-800 to-purple-800 bg-clip-text text-transparent">
-                {books.reduce((sum, book) => sum + book.trick_count, 0)}
+                {books.reduce((sum: number, book: Book) => sum + book.trick_count, 0)}
               </p>
             </div>
           </div>

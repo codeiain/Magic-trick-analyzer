@@ -8,7 +8,7 @@ of OCR and AI tasks.
 import json
 import os
 import redis
-from rq import Queue, Worker, Connection
+from rq import Queue, Worker
 from typing import Dict, Any, Optional, List
 import logging
 from datetime import datetime, timedelta
@@ -34,15 +34,15 @@ class JobQueue:
         job_data = {
             'type': 'ocr',
             'file_path': file_path,
+            'book_id': book_metadata.get('book_id'),
             'book_metadata': book_metadata,
             'created_at': datetime.utcnow().isoformat()
         }
         
         job = self.ocr_queue.enqueue(
-            'ocr_service.process_pdf',
+            'ocr_processor.process_pdf',
             job_data,
-            timeout='30m',  # 30 minute timeout for OCR
-            job_timeout='30m'
+            job_timeout='30m'  # 30 minute timeout for OCR
         )
         
         # Store job metadata in Redis
@@ -61,18 +61,19 @@ class JobQueue:
         logger.info(f"OCR job queued: {job.id} for file: {file_path}")
         return job.id
     
-    def enqueue_ai_job(self, text_content: str, book_id: str, job_id: str) -> str:
+    def enqueue_ai_job(self, book_id: str, text_content: str, parent_job_id: str = None, source: str = 'api') -> str:
         """Queue an AI processing job"""
         job_data = {
             'type': 'ai',
             'text_content': text_content,
             'book_id': book_id,
-            'parent_job_id': job_id,
+            'parent_job_id': parent_job_id,
+            'source': source,
             'created_at': datetime.utcnow().isoformat()
         }
         
         job = self.ai_queue.enqueue(
-            'ai_service.process_text',
+            'ai_processor.process_text',  # Updated function name to match AI service
             job_data,
             timeout='15m',  # 15 minute timeout for AI
             job_timeout='15m'
@@ -85,14 +86,47 @@ class JobQueue:
             'type': 'ai',
             'status': 'queued',
             'book_id': book_id,
-            'parent_job_id': job_id,
+            'parent_job_id': parent_job_id or '',
+            'source': source,
             'created_at': job_data['created_at'],
             'queue': 'ai'
         })
         self.redis_conn.expire(job_key, timedelta(hours=24))
         
-        logger.info(f"AI job queued: {job.id} for book: {book_id}")
+        logger.info(f"AI job queued: {job.id} for book: {book_id} (source: {source})")
         return job.id
+    
+    def update_job_ai_info(self, job_id: str, ai_info: Dict[str, Any]) -> bool:
+        """Update job with AI processing information"""
+        try:
+            job_key = f"job:{job_id}"
+            
+            # Check if job exists
+            if not self.redis_conn.exists(job_key):
+                logger.warning(f"Job {job_id} not found for AI info update")
+                return False
+            
+            # Update job with AI information
+            update_data = {}
+            if 'ai_job_id' in ai_info:
+                update_data['ai_job_id'] = ai_info['ai_job_id']
+            if 'ocr_completed' in ai_info:
+                update_data['ocr_completed'] = str(ai_info['ocr_completed'])
+            if 'ai_queued' in ai_info:
+                update_data['ai_queued'] = str(ai_info['ai_queued'])
+            if 'ocr_result' in ai_info:
+                update_data['ocr_result'] = json.dumps(ai_info['ocr_result'])
+            if 'updated_at' in ai_info:
+                update_data['updated_at'] = ai_info['updated_at']
+            
+            self.redis_conn.hset(job_key, mapping=update_data)
+            
+            logger.info(f"Updated job {job_id} with AI info: ai_job_id={ai_info.get('ai_job_id')}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error updating job {job_id} with AI info: {e}")
+            return False
     
     def enqueue_training_job(self, training_data: Dict[str, Any]) -> str:
         """Queue a model training job"""
@@ -141,7 +175,17 @@ class JobQueue:
             if rq_job:
                 job_data['rq_status'] = rq_job.get_status()
                 if rq_job.result:
-                    job_data['result'] = json.dumps(rq_job.result) if isinstance(rq_job.result, dict) else str(rq_job.result)
+                    try:
+                        # Safely handle result conversion
+                        if isinstance(rq_job.result, dict):
+                            job_data['result'] = rq_job.result  # Keep as dict, let FastAPI serialize it
+                        elif isinstance(rq_job.result, (str, int, float, bool, list)):
+                            job_data['result'] = rq_job.result
+                        else:
+                            job_data['result'] = str(rq_job.result)
+                    except Exception as result_error:
+                        logger.warning(f"Could not serialize job result: {result_error}")
+                        job_data['result'] = f"<serialization_error: {type(rq_job.result).__name__}>"
                 if rq_job.exc_info:
                     job_data['error'] = str(rq_job.exc_info)
             else:
@@ -150,6 +194,37 @@ class JobQueue:
             logger.error(f"Error fetching RQ job {job_id}: {e}")
             job_data['rq_status'] = 'error'
             job_data['error'] = str(e)
+        
+        # Handle multi-stage job information
+        if 'ai_job_id' in job_data:
+            # This is a multi-stage job, get AI job status too
+            ai_job_id = job_data['ai_job_id']
+            ai_job_status = self.get_job_status(ai_job_id)
+            
+            if ai_job_status:
+                job_data['ai_job_status'] = {
+                    'job_id': ai_job_id,
+                    'status': ai_job_status.get('rq_status', 'unknown'),
+                    'result': ai_job_status.get('result'),
+                    'error': ai_job_status.get('error')
+                }
+            else:
+                job_data['ai_job_status'] = {
+                    'job_id': ai_job_id,
+                    'status': 'not_found'
+                }
+        
+        # Parse OCR result if it exists
+        if 'ocr_result' in job_data:
+            try:
+                job_data['ocr_result'] = json.loads(job_data['ocr_result'])
+            except (json.JSONDecodeError, TypeError):
+                pass  # Keep as string if not valid JSON
+        
+        # Convert boolean strings back to actual booleans
+        for bool_field in ['ocr_completed', 'ai_queued']:
+            if bool_field in job_data:
+                job_data[bool_field] = job_data[bool_field].lower() == 'true'
         
         return job_data
     

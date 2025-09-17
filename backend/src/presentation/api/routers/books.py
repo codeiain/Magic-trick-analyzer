@@ -44,6 +44,99 @@ def create_router(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error retrieving book: {str(e)}")
     
+    @router.get("/processed/list")
+    async def get_processed_books():
+        """Get all books that have been processed (have processed_at timestamp)."""
+        try:
+            import sys
+            sys.path.append('/app')
+            from shared_database import get_database_connection, BookModel
+            
+            # Get database connection
+            db = get_database_connection()
+            session = db.get_session()
+            
+            # Query books that have been processed
+            processed_books = session.query(BookModel).filter(
+                BookModel.processed_at.isnot(None)
+            ).all()
+            
+            result = []
+            for book in processed_books:
+                result.append({
+                    "id": book.id,
+                    "title": book.title,
+                    "author": book.author,
+                    "file_path": book.file_path,
+                    "processed_at": book.processed_at.isoformat() if book.processed_at else None,
+                    "created_at": book.created_at.isoformat() if book.created_at else None,
+                    "publication_year": book.publication_year,
+                    "isbn": book.isbn
+                })
+                
+            session.close()
+            db.close()
+            
+            return {"processed_books": result, "count": len(result)}
+            
+        except Exception as e:
+            import traceback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error retrieving processed books: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Error retrieving processed books: {str(e)}")
+    
+    @router.get("/processed/{book_id}")
+    async def get_processed_book(book_id: str):
+        """Get a specific processed book by ID."""
+        try:
+            import sys
+            sys.path.append('/app')
+            from shared_database import get_database_connection, BookModel
+            
+            # Get database connection
+            db = get_database_connection()
+            session = db.get_session()
+            
+            # Query specific book that has been processed
+            book = session.query(BookModel).filter(
+                BookModel.id == book_id,
+                BookModel.processed_at.isnot(None)
+            ).first()
+            
+            if not book:
+                session.close()
+                db.close()
+                raise HTTPException(status_code=404, detail="Processed book not found")
+            
+            result = {
+                "id": book.id,
+                "title": book.title,
+                "author": book.author,
+                "file_path": book.file_path,
+                "processed_at": book.processed_at.isoformat() if book.processed_at else None,
+                "created_at": book.created_at.isoformat() if book.created_at else None,
+                "updated_at": book.updated_at.isoformat() if book.updated_at else None,
+                "publication_year": book.publication_year,
+                "isbn": book.isbn
+            }
+                
+            session.close()
+            db.close()
+            
+            return result
+            
+        except HTTPException:
+            raise  # Re-raise HTTP exceptions as-is
+        except Exception as e:
+            import traceback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error retrieving processed book {book_id}: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Error retrieving processed book: {str(e)}")
+    
     @router.post("/upload", response_model=ProcessingStatusSchema)
     async def upload_pdf(
         file: UploadFile = File(...),
@@ -69,14 +162,20 @@ def create_router(
                 temp_file.write(content)
             
             # Submit to job queue instead of processing directly
-            from src.infrastructure.queue.job_queue import JobQueue
-            job_queue = JobQueue()
+            from src.infrastructure.queue.job_queue import get_job_queue
+            job_queue = get_job_queue()
             
-            job_id = job_queue.enqueue_pdf_processing(
+            # Prepare book metadata
+            book_metadata = {
+                'title': file.filename,
+                'book_id': file_id,
+                'original_filename': file.filename,
+                'reprocess': reprocess
+            }
+            
+            job_id = job_queue.enqueue_ocr_job(
                 file_path=temp_path,
-                book_id=file_id,
-                original_filename=file.filename,
-                reprocess=reprocess
+                book_metadata=book_metadata
             )
             
             return ProcessingStatusSchema(
@@ -87,7 +186,42 @@ def create_router(
             )
             
         except Exception as e:
+            import traceback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Upload error: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
             raise HTTPException(status_code=500, detail=f"Error processing upload: {str(e)}")
+    
+    @router.get("/job/{job_id}")
+    async def get_job_status(job_id: str):
+        """Get the status and results of a processing job."""
+        try:
+            from src.infrastructure.queue.job_queue import get_job_queue
+            job_queue = get_job_queue()
+            
+            job_status = job_queue.get_job_status(job_id)
+            if not job_status:
+                raise HTTPException(status_code=404, detail="Job not found")
+            
+            return {
+                "job_id": job_id,
+                "status": job_status.get('rq_status', job_status.get('status', 'unknown')),
+                "type": job_status.get('type'),
+                "created_at": job_status.get('created_at'),
+                "updated_at": job_status.get('updated_at'),
+                "file_path": job_status.get('file_path'),
+                "result": job_status.get('result'),
+                "error": job_status.get('error')
+            }
+            
+        except Exception as e:
+            import traceback
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error getting job status: {str(e)}")
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"Error getting job status: {str(e)}")
     
     @router.get("/{book_id}/reprocess")
     async def reprocess_book(book_id: str):

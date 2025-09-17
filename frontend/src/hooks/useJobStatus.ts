@@ -14,6 +14,21 @@ interface JobStatus {
   created_at: string;
   started_at?: string;
   finished_at?: string;
+  // Multi-stage job information
+  ocr_completed?: boolean;
+  ai_queued?: boolean;
+  ai_job_id?: string;
+  ai_job_status?: {
+    job_id: string;
+    status: string;
+    result?: any;
+    error?: string;
+  };
+  ocr_result?: {
+    character_count: number;
+    confidence: number;
+    database_saved: boolean;
+  };
 }
 
 interface UseJobStatusOptions {
@@ -48,21 +63,30 @@ export function useJobStatus(jobId: string | null, options: UseJobStatusOptions 
         
         setJobStatus(status);
         
-        // Check if job is complete
-        if (status.status === 'finished') {
+        // Check if job is complete (either single-stage or multi-stage)
+        const isOCRComplete = status.status === 'finished';
+        const isAIComplete = status.ai_job_status?.status === 'finished';
+        const isMultiStageJob = Boolean(status.ai_job_id);
+        
+        // For multi-stage jobs, consider complete when both OCR and AI are done
+        // For single-stage jobs, complete when OCR is done
+        const isJobComplete = isOCRComplete && (!isMultiStageJob || isAIComplete);
+        const isJobFailed = status.status === 'failed' || status.ai_job_status?.status === 'failed';
+        
+        if (isJobComplete) {
           setIsLoading(false);
-          if (onComplete && status.result) {
-            onComplete(status.result);
+          if (onComplete && (status.result || status.ai_job_status?.result)) {
+            onComplete(status.ai_job_status?.result || status.result);
           }
           clearInterval(intervalId);
-        } else if (status.status === 'failed') {
+        } else if (isJobFailed) {
           setIsLoading(false);
-          const errorMsg = status.error || 'Job failed';
+          const errorMsg = status.error || status.ai_job_status?.error || 'Job failed';
           if (onError) {
             onError(errorMsg);
           }
           clearInterval(intervalId);
-        } else if (status.status === 'started') {
+        } else if (status.status === 'started' || status.ai_job_status?.status === 'started') {
           setIsLoading(true);
         }
       } catch (err) {

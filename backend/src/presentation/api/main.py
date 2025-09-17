@@ -22,7 +22,8 @@ from ...infrastructure.repositories.sql_repositories import (
     SQLBookRepository, SQLTrickRepository, SQLCrossReferenceRepository
 )
 from ...infrastructure.pdf.pdf_extractor import PDFTextExtractor
-from ...infrastructure.ai.trick_detector import TrickDetector
+# TODO: Remove AI dependencies - moved to ai-service  
+# from ...infrastructure.ai.trick_detector import TrickDetector
 from ...application.services.pdf_processing import PDFProcessingService
 from ...domain.services.magic_analysis import TrickAnalysisService, CrossReferenceService
 

@@ -9,9 +9,10 @@ from uuid import UUID
 from ....application.use_cases.magic_use_cases import SearchTricksUseCase, SearchTricksRequest
 from ....domain.repositories.magic_repositories import TrickRepository, BookRepository
 from ....domain.value_objects.common import TrickId, BookId
-from ....infrastructure.ai.model_training import (
-    FeedbackData, TrainingDataGenerator, ModelFineTuner, AdaptiveTrickDetector
-)
+# TODO: Remove AI dependencies - moved to ai-service
+# from ....infrastructure.ai.model_training import (
+#     FeedbackData, TrainingDataGenerator, ModelFineTuner, AdaptiveTrickDetector
+# )
 from .schemas import FeedbackSchema, TrainingStatusSchema, ModelInfoSchema
 
 

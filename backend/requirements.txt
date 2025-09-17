@@ -11,25 +11,18 @@ python-multipart==0.0.6
 sqlalchemy==2.0.43
 alembic==1.16.5
 
-# PDF Processing
+# PDF Processing (basic text extraction only)
 PyMuPDF==1.26.4
 ocrmypdf==16.11.0
 
-# AI/ML packages - use default PyPI for simplicity
-torch==2.8.0
-sentence-transformers==5.1.0
-spacy==3.8.7
-transformers==4.56.1
-numpy==2.3.3
-scikit-learn==1.7.2
-
-# Text Processing
+# Basic text processing (for text extraction and basic NLP)
 nltk==3.9.1
 regex==2025.9.1
 
 # Data Processing
 pandas==2.3.2
 pydantic==2.11.9
+numpy==2.3.3
 
 # Configuration
 python-dotenv==1.1.1
