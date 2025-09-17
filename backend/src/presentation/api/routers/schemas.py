@@ -199,15 +199,19 @@ class SearchResultSchema(BaseModel):
 class ProcessingStatusSchema(BaseModel):
     """Schema for processing status responses."""
     
-    status: str = Field(..., description="Processing status: processing, completed, failed")
+    status: str = Field(..., description="Processing status: queued, processing, completed, failed")
     message: str
+    job_id: Optional[str] = Field(None, description="Job ID for tracking async processing")
+    file_path: Optional[str] = Field(None, description="Path to the processed file")
     details: Optional[Dict[str, Any]] = None
     
     class Config:
         schema_extra = {
             "example": {
-                "status": "processing",
+                "status": "queued",
                 "message": "PDF uploaded and queued for processing",
+                "job_id": "abc123-def456-ghi789",
+                "file_path": "/app/temp/example.pdf",
                 "details": {"estimated_time": "5-10 minutes"}
             }
         }

@@ -1,15 +1,41 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BookOpenIcon, DocumentIcon } from '@heroicons/react/24/outline';
+import { BookOpenIcon, DocumentIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { booksApi } from '../lib/api';
+import { useJobStatus } from '../hooks/useJobStatus';
 import type { Book } from '../types';
 
 export default function BooksPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
+  const [currentJobId, setCurrentJobId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
+
+  // Job status polling
+  const { jobStatus, isLoading: isJobRunning, error: jobError, cancelJob, isComplete } = useJobStatus(
+    currentJobId,
+    {
+      onComplete: (result) => {
+        setUploadProgress('Processing completed successfully!');
+        queryClient.invalidateQueries({ queryKey: ['books'] });
+        setTimeout(() => {
+          setCurrentJobId(null);
+          setIsUploading(false);
+          setUploadProgress('');
+        }, 2000);
+      },
+      onError: (error) => {
+        setUploadProgress(`Processing failed: ${error}`);
+        setTimeout(() => {
+          setCurrentJobId(null);
+          setIsUploading(false);
+          setUploadProgress('');
+        }, 3000);
+      }
+    }
+  );
 
   // Fetch books from API
   const { data: books = [], isLoading, error } = useQuery({
@@ -24,19 +50,25 @@ export default function BooksPage() {
       setIsUploading(true);
       setUploadProgress('Uploading file...');
     },
-    onSuccess: () => {
-      setUploadProgress('Upload successful! Processing book...');
-      // Refresh the books list
-      queryClient.invalidateQueries({ queryKey: ['books'] });
+    onSuccess: (response) => {
+      // Check if response includes job_id (new async system)
+      if (response.job_id) {
+        setCurrentJobId(response.job_id);
+        setUploadProgress('Upload successful! Processing started...');
+      } else {
+        // Fallback for old system
+        setUploadProgress('Upload successful! Processing book...');
+        queryClient.invalidateQueries({ queryKey: ['books'] });
+        setTimeout(() => {
+          setIsUploading(false);
+          setUploadProgress('');
+        }, 2000);
+      }
+      
       // Clear the file input
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
-      // Clear progress after a delay
-      setTimeout(() => {
-        setIsUploading(false);
-        setUploadProgress('');
-      }, 2000);
     },
     onError: (error) => {
       console.error('Upload failed:', error);
@@ -146,8 +178,62 @@ export default function BooksPage() {
       {/* Upload Progress */}
       {uploadProgress && (
         <div className="mb-8">
-          <div className="bg-blue-50/80 backdrop-blur-lg border border-blue-200/60 rounded-2xl p-4">
-            <p className="text-blue-800 font-semibold">{uploadProgress}</p>
+          <div className="bg-blue-50/80 backdrop-blur-lg border border-blue-200/60 rounded-2xl p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                {isJobRunning && (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
+                )}
+                <div>
+                  <p className="text-blue-800 font-semibold">{uploadProgress}</p>
+                  {jobStatus && (
+                    <div className="mt-2">
+                      <p className="text-sm text-blue-600">
+                        Job ID: <code className="bg-blue-100 px-2 py-1 rounded text-xs">{jobStatus.job_id}</code>
+                      </p>
+                      <p className="text-sm text-blue-600 mt-1">
+                        Status: <span className={`font-medium ${
+                          jobStatus.status === 'finished' ? 'text-green-600' :
+                          jobStatus.status === 'failed' ? 'text-red-600' :
+                          jobStatus.status === 'started' ? 'text-yellow-600' :
+                          'text-blue-600'
+                        }`}>{jobStatus.status}</span>
+                      </p>
+                      {jobStatus.message && (
+                        <p className="text-sm text-gray-600 mt-1">{jobStatus.message}</p>
+                      )}
+                      {jobStatus.progress && (
+                        <div className="mt-2">
+                          <div className="w-full bg-blue-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300" 
+                              style={{ width: `${jobStatus.progress}%` }}
+                            ></div>
+                          </div>
+                          <p className="text-xs text-blue-600 mt-1">{jobStatus.progress}% complete</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              
+              {/* Cancel button for active jobs */}
+              {currentJobId && isJobRunning && (
+                <button
+                  onClick={() => {
+                    cancelJob();
+                    setCurrentJobId(null);
+                    setIsUploading(false);
+                    setUploadProgress('');
+                  }}
+                  className="px-3 py-2 text-red-600 hover:bg-red-50 rounded-lg text-sm font-medium transition-colors"
+                  title="Cancel job"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

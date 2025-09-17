@@ -35,12 +35,18 @@ pydantic==2.11.9
 python-dotenv==1.1.1
 pyyaml==6.0.2
 
+# Job Queue
+redis==5.2.1
+rq==2.1.0
+
 # Logging
 structlog==25.4.0
 
 # Development (optional - can be excluded for production)
-# pytest==8.4.2
-# pytest-asyncio==1.2.0
+pytest==8.3.2
+pytest-asyncio==0.23.7
+pytest-mock==3.12.0
+pytest-cov==4.0.0
 # black==25.1.0
 # isort==6.0.1
 # mypy==1.18.1

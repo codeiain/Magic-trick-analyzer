@@ -209,7 +209,35 @@ Key API endpoints:
 - `POST /api/v1/review/train` - Start model training
 - `GET /api/v1/review/stats` - Get training statistics
 
-## 🐛 Troubleshooting
+## � Training Data Creation
+
+The system includes a comprehensive script to create training data from multiple magic books:
+
+```bash
+# Create training data for all supported books
+python create_comprehensive_training_data.py
+
+# Create data for specific datasets only
+python create_comprehensive_training_data.py --datasets dai_vernon david_roth
+
+# Use custom database path
+python create_comprehensive_training_data.py --db-path custom_path.db
+```
+
+### Supported Datasets
+
+- **dai_vernon**: The Dai Vernon Book of Magic (1957)
+- **david_roth**: Expert Coin Magic (1982)
+- **hugard**: Coin Magic by Jean Hugard (1954)
+- **mentalism**: Encyclopedic Dictionary of Mentalism - Volume 3 (2005)
+
+The script automatically:
+- Creates database tables if they don't exist
+- Inserts book and trick data
+- Creates cross-references between similar tricks
+- Provides verification and statistics
+
+## �🐛 Troubleshooting
 
 ### Common Issues
 

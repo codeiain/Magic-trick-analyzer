@@ -6,11 +6,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from .api.routers import books, tricks, search, statistics
+from .api.routers import books, tricks, search, statistics, jobs
 from .api.routers.review import create_review_router
 from ..application.use_cases.magic_use_cases import SearchTricksUseCase
 from ..infrastructure.config import Config
 from ..infrastructure.database.database import DatabaseManager
+from ..infrastructure.queue.job_queue import JobQueue
 from ..infrastructure.repositories.sql_repositories import (
     SQLTrickRepository, SQLBookRepository
 )
@@ -38,6 +39,9 @@ def create_app() -> FastAPI:
     # Initialize database
     db_manager = DatabaseManager(config)
     db_manager.initialize()
+    
+    # Initialize job queue
+    job_queue = JobQueue()
     
     logger = logging.getLogger(__name__)
     logger.info("Starting Magic Trick Analyzer API...")
@@ -118,6 +122,10 @@ def create_app() -> FastAPI:
                       prefix="/api/v1/search", tags=["Search"])
     app.include_router(statistics.create_router(statistics_use_case), 
                       prefix="/api/v1/statistics", tags=["Statistics"])
+    
+    # Initialize and include jobs router
+    jobs.initialize_job_queue(job_queue)
+    app.include_router(jobs.router, prefix="/api/v1")
     
     # Cross-reference router
     try:

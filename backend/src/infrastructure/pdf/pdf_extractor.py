@@ -165,13 +165,13 @@ class PDFTextExtractor:
             cmd = [
                 'ocrmypdf',
                 '--redo-ocr',   # OCR pages that need it
-                '--quiet',      # Suppress output
+                '--progress-bar',  # Show progress for long operations  
                 file_path,
                 temp_path
             ]
             
             self._logger.info(f"Starting OCR command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)  # 5 minute timeout
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=900)  # 15 minute timeout
             self._logger.info(f"OCR command completed with return code: {result.returncode}")
             
             if result.returncode == 0:
@@ -187,7 +187,7 @@ class PDFTextExtractor:
                 return ""
                 
         except subprocess.TimeoutExpired:
-            self._logger.error(f"OCR timeout for {file_path} after 300 seconds")
+            self._logger.error(f"OCR timeout for {file_path} after 900 seconds")
             if Path(temp_path).exists():
                 Path(temp_path).unlink()
             return ""

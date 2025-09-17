@@ -1,4 +1,118 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: magic-trick-analyzer-redis
+    environment:
+      TZ: Europe/London
+    volumes:
+      - redis-data:/data
+      - "./shared/logs:/var/log/redis"
+    ports:
+      - "6379:6379"  # Redis port (optional for external access)
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.5'
+        reservations:
+          memory: 64M
+          cpus: '0.1'
+
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: magic-trick-analyzer-ai
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Europe/London
+      PYTHONUNBUFFERED: 1
+      REDIS_URL: "redis://redis:6379/0"
+      DATABASE_URL: "sqlite:///data/magic_tricks.db"
+      AI_MODEL: "all-MiniLM-L6-v2"
+      LOG_LEVEL: "INFO"
+    volumes:
+      # Database access
+      - "./shared/data:/app/data"
+      
+      # Pre-downloaded models
+      - "./shared/models:/app/models"
+      
+      # Logs
+      - "./shared/logs:/app/logs"
+      
+      # Temporary processing
+      - magic-analyzer-temp:/app/temp
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+          cpus: '2.0'
+        reservations:
+          memory: 1G
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r=redis.Redis(host='redis'); r.ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  ocr-service:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+    container_name: magic-trick-analyzer-ocr
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Europe/London
+      PYTHONUNBUFFERED: 1
+      REDIS_URL: "redis://redis:6379/0"
+      DATABASE_URL: "sqlite:///data/magic_tricks.db"
+      LOG_LEVEL: "INFO"
+      TESSDATA_PREFIX: "/usr/share/tesseract-ocr/5/tessdata"
+    volumes:
+      # Database access
+      - "./shared/data:/app/data"
+      
+      # Logs
+      - "./shared/logs:/app/logs"
+      
+      # Temporary processing  
+      - magic-analyzer-temp:/app/temp
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 3G
+          cpus: '2.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis; r=redis.Redis(host='redis'); r.ping()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   magic-trick-analyzer:
     build:
       context: ./backend
@@ -10,6 +124,7 @@ services:
       TZ: Europe/London
       PYTHONUNBUFFERED: 1
       DATABASE_URL: "sqlite:///data/magic_tricks.db"
+      REDIS_URL: "redis://redis:6379/0"
       LOG_LEVEL: "INFO"
     volumes:
       # Database and data persistence
@@ -27,6 +142,9 @@ services:
     ports:
       - "8084:8000"  # API endpoint
     restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -56,6 +174,8 @@ services:
     depends_on:
       magic-trick-analyzer:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/health"]
       interval: 30s
@@ -75,6 +195,7 @@ services:
       PYTHONUNBUFFERED: 1
       DATABASE_PATH: "/app/data/magic_tricks.db"
       API_BASE_URL: "http://magic-trick-analyzer:8000"
+      REDIS_URL: "redis://redis:6379/0"
     volumes:
       # Shared database access (read-only)
       - "./shared/data:/app/data:ro"
@@ -103,6 +224,8 @@ services:
 
 volumes:
   magic-analyzer-temp:
+    driver: local
+  redis-data:
     driver: local
 
 networks:

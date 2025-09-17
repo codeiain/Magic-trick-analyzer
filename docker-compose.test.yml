@@ -1,0 +1,67 @@
+# Test-specific Docker Compose configuration
+version: '3.8'
+
+services:
+  # Test database
+  test-redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  # Run integration tests
+  integration-tests:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    depends_on:
+      - test-redis
+    environment:
+      - REDIS_URL=redis://test-redis:6379
+      - DATABASE_URL=sqlite:///tmp/test.db
+      - TESTING=true
+    volumes:
+      - ./backend:/app
+    command: python -m pytest tests/ --integration -v
+    profiles:
+      - test
+
+  # Test OCR service
+  test-ocr:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://test-redis:6379
+      - TESTING=true
+    depends_on:
+      - test-redis
+    command: python -m pytest test_ocr_processor.py -v
+    profiles:
+      - test
+
+  # Test AI service  
+  test-ai:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://test-redis:6379
+      - TESTING=true
+    depends_on:
+      - test-redis
+    command: python -m pytest test_ai_processor.py -v
+    profiles:
+      - test
+
+  # Test MCP server
+  test-mcp:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_PATH=/tmp/test.db
+      - TESTING=true
+    command: python -m pytest test_magic_trick_mcp_server.py -v
+    profiles:
+      - test

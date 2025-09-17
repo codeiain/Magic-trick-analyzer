@@ -1,5 +1,5 @@
 ﻿"""Books API router - handles book-related endpoints."""
-from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks, Query
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query
 from typing import List
 from uuid import UUID
 import tempfile
@@ -46,7 +46,6 @@ def create_router(
     
     @router.post("/upload", response_model=ProcessingStatusSchema)
     async def upload_pdf(
-        background_tasks: BackgroundTasks,
         file: UploadFile = File(...),
         reprocess: bool = False
     ):
@@ -55,37 +54,43 @@ def create_router(
             raise HTTPException(status_code=400, detail="Only PDF files are supported")
         
         try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as temp_file:
+            # Save uploaded file to temp directory
+            import uuid
+            file_id = str(uuid.uuid4())
+            temp_filename = f"{file_id}_{file.filename}"
+            temp_path = os.path.join("/app/temp", temp_filename)
+            
+            # Ensure temp directory exists
+            os.makedirs("/app/temp", exist_ok=True)
+            
+            # Save uploaded file
+            with open(temp_path, "wb") as temp_file:
                 content = await file.read()
                 temp_file.write(content)
-                temp_path = temp_file.name
             
-            request = ProcessBooksRequest(
-                file_paths=[temp_path],
-                reprocess_existing=reprocess,
-                original_filenames=[file.filename]
+            # Submit to job queue instead of processing directly
+            from src.infrastructure.queue.job_queue import JobQueue
+            job_queue = JobQueue()
+            
+            job_id = job_queue.enqueue_pdf_processing(
+                file_path=temp_path,
+                book_id=file_id,
+                original_filename=file.filename,
+                reprocess=reprocess
             )
             
-            async def process_and_cleanup():
-                try:
-                    await process_books_use_case.execute(request)
-                finally:
-                    if os.path.exists(temp_path):
-                        os.unlink(temp_path)
-            
-            background_tasks.add_task(process_and_cleanup)
-            
             return ProcessingStatusSchema(
-                status="processing",
-                message="File uploaded successfully. Processing started in background.",
-                file_path=temp_path
+                status="queued",
+                message="File uploaded successfully. Processing queued.",
+                file_path=temp_path,
+                job_id=job_id
             )
             
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error processing upload: {str(e)}")
     
     @router.get("/{book_id}/reprocess")
-    async def reprocess_book(book_id: str, background_tasks: BackgroundTasks):
+    async def reprocess_book(book_id: str):
         """Reprocess an existing book with updated algorithms."""
         try:
             book_uuid = UUID(book_id)
@@ -94,10 +99,12 @@ def create_router(
             if not book:
                 raise HTTPException(status_code=404, detail="Book not found")
             
+            # For reprocessing, we now recommend re-uploading via the job queue
             return {
                 "status": "info", 
-                "message": f"To reprocess '{book.title}', please re-upload the PDF file.",
-                "book_id": book_id
+                "message": f"To reprocess '{book.title}', please re-upload the PDF file using the upload endpoint. The new job queue system will handle the processing asynchronously.",
+                "book_id": book_id,
+                "upload_endpoint": "/api/v1/books/upload?reprocess=true"
             }
             
         except ValueError:
