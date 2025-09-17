@@ -618,20 +618,37 @@ async def handle_call_tool(name: str, arguments: dict | None) -> list[types.Text
 
 async def main():
     """Run the MCP server"""
-    # Use stdin/stdout for communication
-    async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
-        await server.run(
-            read_stream,
-            write_stream,
-            InitializationOptions(
-                server_name="magic-trick-analyzer",
-                server_version="1.0.0",
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(),
-                    experimental_capabilities={},
+    import sys
+    
+    # Check if we have stdin available
+    if sys.stdin.isatty():
+        logger.info("MCP server started, waiting for connection...")
+        # Wait for input when running in terminal
+        try:
+            await asyncio.sleep(1)  # Give it a moment
+        except KeyboardInterrupt:
+            logger.info("MCP server stopped by user")
+            return
+    
+    try:
+        # Use stdin/stdout for communication
+        async with mcp.server.stdio.stdio_server() as (read_stream, write_stream):
+            logger.info("MCP server running, ready for requests")
+            await server.run(
+                read_stream,
+                write_stream,
+                InitializationOptions(
+                    server_name="magic-trick-analyzer",
+                    server_version="1.0.0",
+                    capabilities=server.get_capabilities(
+                        notification_options=NotificationOptions(),
+                        experimental_capabilities={},
+                    ),
                 ),
-            ),
-        )
+            )
+    except Exception as e:
+        logger.error(f"MCP server error: {e}")
+        raise
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -1,0 +1,38 @@
+{
+	"servers": {
+		"plex-mcp": {
+			"url": "http://0.0.0.0:3001/sse"
+		},
+		"magic-trick-analyzer": {
+			"command": "docker",
+			"args": [
+				"exec",
+				"-i",
+				"magic-trick-analyzer-mcp",
+				"python",
+				"magic_trick_mcp_server.py"
+			],
+			"env": {
+				"DATABASE_PATH": "/app/data/magic_tricks.db",
+				"API_BASE_URL": "http://magic-trick-analyzer:8000",
+				"PYTHONUNBUFFERED": "1"
+			}
+		}
+	},
+	"inputs": []
+}
+
+// Alternative configuration using the launcher script:
+// {
+// 	"servers": {
+// 		"plex-mcp": {
+// 			"url": "http://0.0.0.0:3001/sse"
+// 		},
+// 		"magic-trick-analyzer": {
+// 			"command": "python",
+// 			"args": ["c:\\docker\\magic-trick-analyzer\\mcp-server\\launch_mcp.py"],
+// 			"cwd": "c:\\docker\\magic-trick-analyzer"
+// 		}
+// 	},
+// 	"inputs": []
+// }
