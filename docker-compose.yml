@@ -63,6 +63,43 @@ services:
       retries: 3
       start_period: 10s
 
+  magic-trick-analyzer-mcp:
+    build:
+      context: ./mcp-server
+      dockerfile: Dockerfile
+    container_name: magic-trick-analyzer-mcp
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Europe/London
+      PYTHONUNBUFFERED: 1
+      DATABASE_PATH: "/app/data/magic_tricks.db"
+      API_BASE_URL: "http://magic-trick-analyzer:8000"
+    volumes:
+      # Shared database access (read-only)
+      - "./shared/data:/app/data:ro"
+      
+      # MCP server logs
+      - "./shared/logs:/app/logs"
+    restart: unless-stopped
+    depends_on:
+      magic-trick-analyzer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 128M
+          cpus: '0.1'
+
 volumes:
   magic-analyzer-temp:
     driver: local
