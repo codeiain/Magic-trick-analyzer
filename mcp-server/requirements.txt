@@ -1,4 +1,16 @@
-# MCP Server Specific Requirements
+# MCP Server Requirements
+# Install root requirements first: pip install -r ../requirements.txt
+
+# MCP-specific dependencies (already in root requirements.txt)
+mcp>=1.0.0
+pydantic>=2.0.0
+python-dotenv>=1.0.0
+
+# Testing dependencies (already in root requirements.txt)
+pytest==8.3.2
+pytest-asyncio==0.23.7
+pytest-mock==3.12.0
+pytest-cov==4.0.0Specific Requirements
 # (Core dependencies are in root requirements.txt)
 
 # Already covered in root:

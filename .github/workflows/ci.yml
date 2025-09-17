@@ -172,7 +172,7 @@ jobs:
 
     - name: Run backend tests
       run: |
-        python run_tests.py --coverage
+        python run_tests.py
 
     - name: Upload backend coverage to Codecov
       uses: codecov/codecov-action@v4

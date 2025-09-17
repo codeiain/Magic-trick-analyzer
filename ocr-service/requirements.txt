@@ -1,17 +1,17 @@
-# OCR Service Specific Requirements
-# (Core dependencies are in root requirements.txt)
+# OCR Service Requirements
+# Install root requirements first: pip install -r ../requirements.txt
 
-# Already covered in root:
-- redis==5.2.1
-- rq==2.1.0
-- pymupdf==1.24.14
-- pillow==10.2.0
-- pytesseract==0.3.13
-- pdf2image==1.17.0
-- sqlalchemy==2.0.43 (root has newer version 2.0.43)
-- pytest==8.3.2
-- pytest-asyncio==0.23.7
-- pytest-mock==3.12.0
-- pytest-cov==4.0.0
+# OCR-specific dependencies (already in root requirements.txt)
+redis==5.2.1
+rq==2.1.0
+pymupdf==1.24.14
+pillow==10.2.0
+pytesseract==0.3.13
+pdf2image==1.17.0
+sqlalchemy==2.0.43
 
-# No additional requirements beyond root
+# Testing dependencies (already in root requirements.txt)
+pytest==8.3.2
+pytest-asyncio==0.23.7
+pytest-mock==3.12.0
+pytest-cov==4.0.0
