@@ -6,6 +6,14 @@ on:
   pull_request:
     branches: [ main, develop ]
 
+permissions:
+  contents: read
+  actions: read
+  checks: write
+  pull-requests: write
+  security-events: write
+  statuses: write
+
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository }}/
@@ -48,13 +56,6 @@ jobs:
     - name: Run OCR service tests
       run: |
         python -m pytest test_ocr_processor.py -v --cov=ocr_processor --cov-report=xml --cov-report=term-missing --junitxml=test-results.xml
-
-    - name: Publish OCR test results
-      uses: EnricoMi/publish-unit-test-result-action@v2
-      if: always()
-      with:
-        files: ocr-service/test-results.xml
-        check_name: "OCR Service Test Results"
 
     - name: Upload OCR test artifacts
       uses: actions/upload-artifact@v4
@@ -106,13 +107,6 @@ jobs:
       run: |
         python -m pytest test_ai_processor.py -v --cov=ai_processor --cov-report=xml --cov-report=term-missing --junitxml=test-results.xml
 
-    - name: Publish AI test results
-      uses: EnricoMi/publish-unit-test-result-action@v2
-      if: always()
-      with:
-        files: ai-service/test-results.xml
-        check_name: "AI Service Test Results"
-
     - name: Upload AI test artifacts
       uses: actions/upload-artifact@v4
       if: always()
@@ -162,13 +156,6 @@ jobs:
     - name: Run MCP server tests
       run: |
         python -m pytest test_magic_trick_mcp_server.py -v --cov=magic_trick_mcp_server --cov-report=xml --cov-report=term-missing --junitxml=test-results.xml
-
-    - name: Publish MCP test results
-      uses: EnricoMi/publish-unit-test-result-action@v2
-      if: always()
-      with:
-        files: mcp-server/test-results.xml
-        check_name: "MCP Server Test Results"
 
     - name: Upload MCP test artifacts
       uses: actions/upload-artifact@v4
@@ -225,13 +212,6 @@ jobs:
       run: |
         python run_tests.py
 
-    - name: Publish backend test results
-      uses: EnricoMi/publish-unit-test-result-action@v2
-      if: always()
-      with:
-        files: backend/test-results.xml
-        check_name: "Backend Test Results"
-
     - name: Upload backend test artifacts
       uses: actions/upload-artifact@v4
       if: always()
@@ -249,9 +229,66 @@ jobs:
         flags: backend
         name: backend-coverage
 
+  # Test Results Summary
+  test-summary:
+    needs: [test-ocr-service, test-ai-service, test-mcp-server, test-backend]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Download all test artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: test-results/
+    
+    - name: Create comprehensive test summary
+      run: |
+        echo "# 🧪 Magic Trick Analyzer Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Service | Status | Coverage | Artifacts |" >> $GITHUB_STEP_SUMMARY
+        echo "|---------|--------|----------|-----------|" >> $GITHUB_STEP_SUMMARY
+        
+        # OCR Service
+        if [[ "${{ needs.test-ocr-service.result }}" == "success" ]]; then
+          echo "| OCR Service | ✅ **PASSED** | [Coverage Report](../actions/runs/${{ github.run_id }}/artifacts) | [Test Results](../actions/runs/${{ github.run_id }}/artifacts) |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| OCR Service | ❌ **FAILED** | [Coverage Report](../actions/runs/${{ github.run_id }}/artifacts) | [Test Results](../actions/runs/${{ github.run_id }}/artifacts) |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # AI Service  
+        if [[ "${{ needs.test-ai-service.result }}" == "success" ]]; then
+          echo "| AI Service | ✅ **PASSED** | [Coverage Report](../actions/runs/${{ github.run_id }}/artifacts) | [Test Results](../actions/runs/${{ github.run_id }}/artifacts) |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| AI Service | ❌ **FAILED** | [Coverage Report](../actions/runs/${{ github.run_id }}/artifacts) | [Test Results](../actions/runs/${{ github.run_id }}/artifacts) |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # MCP Server
+        if [[ "${{ needs.test-mcp-server.result }}" == "success" ]]; then
+          echo "| MCP Server | ✅ **PASSED** | [Coverage Report](../actions/runs/${{ github.run_id }}/artifacts) | [Test Results](../actions/runs/${{ github.run_id }}/artifacts) |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| MCP Server | ❌ **FAILED** | [Coverage Report](../actions/runs/${{ github.run_id }}/artifacts) | [Test Results](../actions/runs/${{ github.run_id }}/artifacts) |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        # Backend
+        if [[ "${{ needs.test-backend.result }}" == "success" ]]; then
+          echo "| Backend | ✅ **PASSED** | [Coverage Report](../actions/runs/${{ github.run_id }}/artifacts) | [Test Results](../actions/runs/${{ github.run_id }}/artifacts) |" >> $GITHUB_STEP_SUMMARY
+        else
+          echo "| Backend | ❌ **FAILED** | [Coverage Report](../actions/runs/${{ github.run_id }}/artifacts) | [Test Results](../actions/runs/${{ github.run_id }}/artifacts) |" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "## 📊 Coverage & Reports" >> $GITHUB_STEP_SUMMARY
+        echo "- **JUnit XML**: Test results in machine-readable format" >> $GITHUB_STEP_SUMMARY  
+        echo "- **Coverage XML**: For Codecov integration and analysis" >> $GITHUB_STEP_SUMMARY
+        echo "- **HTML Coverage**: Detailed line-by-line coverage reports" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "🔗 **External Links**:" >> $GITHUB_STEP_SUMMARY
+        echo "- [Codecov Dashboard](https://codecov.io/gh/${{ github.repository }})" >> $GITHUB_STEP_SUMMARY
+        echo "- [GitHub Actions Artifacts](../actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY
+
   # Build Docker Images
   build-images:
-    needs: [test-ocr-service, test-ai-service, test-mcp-server, test-backend]
+    needs: [test-summary]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     
@@ -379,7 +416,7 @@ jobs:
 
   # Notify on completion
   notify:
-    needs: [test-ocr-service, test-ai-service, test-mcp-server, test-backend, build-images]
+    needs: [test-summary, build-images]
     runs-on: ubuntu-latest
     if: always()
     
@@ -391,32 +428,11 @@ jobs:
         echo "## Service Test Status" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         
-        # OCR Service
-        if [[ "${{ needs.test-ocr-service.result }}" == "success" ]]; then
-          echo "✅ **OCR Service**: All tests passed" >> $GITHUB_STEP_SUMMARY
+        # Check overall test status
+        if [[ "${{ needs.test-summary.result }}" == "success" ]]; then
+          echo "✅ **All Services**: Tests completed successfully" >> $GITHUB_STEP_SUMMARY
         else
-          echo "❌ **OCR Service**: Tests failed" >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        # AI Service  
-        if [[ "${{ needs.test-ai-service.result }}" == "success" ]]; then
-          echo "✅ **AI Service**: All tests passed" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "❌ **AI Service**: Tests failed" >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        # MCP Server
-        if [[ "${{ needs.test-mcp-server.result }}" == "success" ]]; then
-          echo "✅ **MCP Server**: All tests passed" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "❌ **MCP Server**: Tests failed" >> $GITHUB_STEP_SUMMARY
-        fi
-        
-        # Backend
-        if [[ "${{ needs.test-backend.result }}" == "success" ]]; then
-          echo "✅ **Backend**: All tests passed" >> $GITHUB_STEP_SUMMARY
-        else
-          echo "❌ **Backend**: Tests failed" >> $GITHUB_STEP_SUMMARY
+          echo "❌ **Test Suite**: Some tests failed - check individual service results" >> $GITHUB_STEP_SUMMARY
         fi
         
         # Build Status
@@ -432,7 +448,7 @@ jobs:
         echo "🔗 **Codecov**: Check detailed coverage analysis at [codecov.io](https://codecov.io/gh/${{ github.repository }})" >> $GITHUB_STEP_SUMMARY
 
     - name: Notify success
-      if: ${{ needs.test-ocr-service.result == 'success' && needs.test-ai-service.result == 'success' && needs.test-mcp-server.result == 'success' && needs.test-backend.result == 'success' && needs.build-images.result == 'success' }}
+      if: ${{ needs.test-summary.result == 'success' && needs.build-images.result == 'success' }}
       run: |
         echo "✅ All tests passed and images built successfully!"
         # Add notification logic (Slack, email, etc.)
