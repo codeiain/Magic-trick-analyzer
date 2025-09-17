@@ -13,8 +13,8 @@ import argparse
 def run_tests(test_type="all", coverage=True, verbose=True):
     """Run the test suite"""
     
-    # Base pytest command
-    cmd = ["python", "-m", "pytest"]
+    # Base pytest command - use current Python interpreter
+    cmd = [sys.executable, "-m", "pytest"]
     
     # Add coverage if requested
     if coverage:
