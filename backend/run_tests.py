@@ -18,7 +18,10 @@ def run_tests(test_type="all", coverage=True, verbose=True):
     
     # Add coverage if requested
     if coverage:
-        cmd.extend(["--cov=src", "--cov-report=html", "--cov-report=term-missing"])
+        cmd.extend(["--cov=src", "--cov-report=html", "--cov-report=term-missing", "--cov-report=xml"])
+    
+    # Add JUnit XML output for GitHub Actions
+    cmd.extend(["--junitxml=test-results.xml"])
     
     # Add verbosity
     if verbose:
