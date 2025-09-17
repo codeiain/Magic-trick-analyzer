@@ -2,22 +2,22 @@
 # (Core dependencies are in root requirements.txt)
 
 # Already covered in root:
-# - redis==5.2.1
-# - rq==2.1.0
-# - sentence-transformers==5.1.0
-# - transformers==4.56.1
-# - torch==2.8.0
-# - numpy==2.3.3
-# - scikit-learn==1.7.2
-# - pandas==2.3.2
-# - python-dotenv==1.1.1
-# - sqlalchemy==2.0.43
-# - pydantic==2.11.9
-# - structlog==25.4.0
-# - requests==2.32.3
-# - pytest==8.3.2
-# - pytest-asyncio==0.23.7
-# - pytest-mock==3.12.0
-# - pytest-cov==4.0.0
+- redis==5.2.1
+- rq==2.1.0
+- sentence-transformers==5.1.0
+- transformers==4.56.1
+- torch==2.8.0
+- numpy==2.3.3
+- scikit-learn==1.7.2
+- pandas==2.3.2
+- python-dotenv==1.1.1
+- sqlalchemy==2.0.43
+- pydantic==2.11.9
+- structlog==25.4.0
+- requests==2.32.3
+- pytest==8.3.2
+- pytest-asyncio==0.23.7
+- pytest-mock==3.12.0
+- pytest-cov==4.0.0
 
 # No additional requirements beyond root
