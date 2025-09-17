@@ -1,0 +1,23 @@
+﻿# Docker Compose override for enhanced caching
+# Use this with: docker compose -f docker-compose.yml -f docker-compose.cache.yml build
+
+services:
+  magic-trick-analyzer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      cache_from:
+        - magic-trick-analyzer:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: magic-trick-analyzer:latest
+
+  magic-trick-analyzer-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      cache_from:
+        - magic-trick-analyzer-frontend:latest
+      args:
+        BUILDKIT_INLINE_CACHE: 1
+    image: magic-trick-analyzer-frontend:latest

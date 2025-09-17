@@ -1,0 +1,36 @@
+# Magic Trick Analyzer Configuration
+
+# Database configuration
+database:
+  url: "sqlite:///data/magic_tricks.db"
+  echo: false
+
+# AI model configuration
+ai:
+  sentence_transformer_model: "all-MiniLM-L6-v2"
+  spacy_model: "en_core_web_sm"
+  confidence_threshold: 0.6
+  similarity_threshold: 0.7
+
+# PDF processing configuration
+pdf:
+  enable_ocr: true
+  watch_directories:
+    - "/app/uploads"
+  upload_directory: "/app/uploads"
+
+# API configuration
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 1
+  reload: false
+  log_level: "info"
+  cors_origins:
+    - "*"
+
+# Logging configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "/app/logs/magic_analyzer.log"

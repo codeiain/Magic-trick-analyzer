@@ -1,0 +1,51 @@
+# Core packages first for better caching
+wheel>=0.41.0
+setuptools>=68.0.0
+
+# Web Framework
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+python-multipart==0.0.6
+
+# Database
+sqlalchemy==2.0.43
+alembic==1.16.5
+
+# PDF Processing
+PyMuPDF==1.26.4
+ocrmypdf==16.11.0
+
+# AI/ML packages - use default PyPI for simplicity
+torch==2.8.0
+sentence-transformers==5.1.0
+spacy==3.8.7
+transformers==4.56.1
+numpy==2.3.3
+scikit-learn==1.7.2
+
+# Text Processing
+nltk==3.9.1
+regex==2025.9.1
+
+# Data Processing
+pandas==2.3.2
+pydantic==2.11.9
+
+# Configuration
+python-dotenv==1.1.1
+pyyaml==6.0.2
+
+# Logging
+structlog==25.4.0
+
+# Development (optional - can be excluded for production)
+# pytest==8.4.2
+# pytest-asyncio==1.2.0
+# black==25.1.0
+# isort==6.0.1
+# mypy==1.18.1
+
+# Utilities
+watchdog==6.0.0
+httpx==0.28.1
+rich==14.1.0

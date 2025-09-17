@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+  
+  body {
+    @apply bg-gray-50 text-gray-900;
+  }
+  
+  /* Ensure SVGs don't exceed their container dimensions */
+  svg {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-magic-600 hover:bg-magic-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+  }
+  
+  .btn-secondary {
+    @apply bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium border border-gray-300 transition-colors duration-200;
+  }
+  
+  .btn-danger {
+    @apply bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+  }
+  
+  .btn-success {
+    @apply bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium transition-colors duration-200;
+  }
+  
+  .card {
+    @apply bg-white rounded-xl shadow-sm border border-gray-200 p-6;
+  }
+  
+  .input {
+    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-magic-500 focus:border-magic-500 outline-none transition-colors;
+  }
+  
+  .confidence-high {
+    @apply bg-green-100 text-green-800 border border-green-200;
+  }
+  
+  .confidence-medium {
+    @apply bg-yellow-100 text-yellow-800 border border-yellow-200;
+  }
+  
+  .confidence-low {
+    @apply bg-red-100 text-red-800 border border-red-200;
+  }
+}

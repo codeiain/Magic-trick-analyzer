@@ -1,0 +1,72 @@
+services:
+  magic-trick-analyzer:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: magic-trick-analyzer
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Europe/London
+      PYTHONUNBUFFERED: 1
+      DATABASE_URL: "sqlite:///data/magic_tricks.db"
+      LOG_LEVEL: "INFO"
+    volumes:
+      # Database and data persistence
+      - "./shared/data:/app/data"
+      
+      # Configuration and logs
+      - "./backend/config:/app/config:ro"
+      - "./shared/logs:/app/logs"
+      
+      # Pre-downloaded models
+      - "./shared/models:/app/models:ro"
+      
+      # Temporary processing
+      - magic-analyzer-temp:/app/temp
+    ports:
+      - "8084:8000"  # API endpoint
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 6G
+          cpus: '3.0'
+        reservations:
+          memory: 2G
+          cpus: '1.0'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  magic-trick-analyzer-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: magic-trick-analyzer-frontend
+    environment:
+      VITE_API_URL: "http://localhost:8084"
+      NODE_ENV: "production"
+    ports:
+      - "3000:80"  # Frontend web interface
+    restart: unless-stopped
+    depends_on:
+      magic-trick-analyzer:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  magic-analyzer-temp:
+    driver: local
+
+networks:
+  default:
+    name: magic-trick-analyzer-network
