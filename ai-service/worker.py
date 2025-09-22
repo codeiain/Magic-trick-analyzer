@@ -33,8 +33,8 @@ def main():
     
     logger.info(f"Starting AI worker, connecting to Redis: {redis_url}")
     
-    # Connect to Redis
-    redis_conn = redis.from_url(redis_url, decode_responses=True)
+    # Connect to Redis with proper encoding handling
+    redis_conn = redis.from_url(redis_url, decode_responses=True, encoding='utf-8', encoding_errors='replace')
     
     # Create queues to listen to
     ai_queue = Queue('ai', connection=redis_conn)

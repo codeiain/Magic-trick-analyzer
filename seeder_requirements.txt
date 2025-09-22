@@ -1,0 +1,17 @@
+# Requirements for the AI-powered database seeder
+# Install with: pip install -r seeder_requirements.txt
+
+# Core AI and PDF processing
+anthropic>=0.25.0          # Claude API client
+PyPDF2>=3.0.0             # PDF text extraction (primary)
+PyMuPDF>=1.23.0           # Alternative PDF processing (fitz)
+
+# Database
+sqlalchemy>=2.0.0         # Database ORM
+
+# HTTP requests for metadata lookup
+requests>=2.31.0          # HTTP client
+
+# Utilities
+python-dateutil>=2.8.0    # Date parsing
+typing-extensions>=4.5.0  # Type hints

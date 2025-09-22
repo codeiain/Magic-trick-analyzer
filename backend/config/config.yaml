@@ -2,7 +2,7 @@
 
 # Database configuration
 database:
-  url: "sqlite:///data/magic_tricks.db"
+  url: "sqlite:///../shared/data/magic_tricks.db"
   echo: false
 
 # AI model configuration

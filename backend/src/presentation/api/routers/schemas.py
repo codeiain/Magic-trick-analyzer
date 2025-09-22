@@ -9,6 +9,31 @@ from uuid import UUID
 from ....domain.entities.magic import Book, Trick, CrossReference
 
 
+class BookSourceSchema(BaseModel):
+    """Schema for book source information within a trick."""
+    
+    book_id: str
+    book_title: str
+    book_author: str
+    page_start: Optional[int] = None
+    page_end: Optional[int] = None
+    method: Optional[str] = None
+    confidence: Optional[float] = None
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "book_id": "123e4567-e89b-12d3-a456-426614174000",
+                "book_title": "Expert Card Technique",
+                "book_author": "Jean Hugard",
+                "page_start": 42,
+                "page_end": 45,
+                "method": "Double lift and side steal combination",
+                "confidence": 0.95
+            }
+        }
+
+
 class TrickSchema(BaseModel):
     """Schema for trick representation in API responses."""
     
@@ -29,12 +54,12 @@ class TrickSchema(BaseModel):
     method: Optional[str] = None
     
     @classmethod
-    def from_entity(cls, trick: Trick, include_book_info: bool = False) -> 'TrickSchema':
+    def from_entity(cls, trick: Trick, include_book_info: bool = False, book_title: str = None, book_author: str = None) -> 'TrickSchema':
         """Create schema from domain entity."""
         schema_data = {
             "id": str(trick.id),
             "name": str(trick.name),
-            "effect_type": trick.effect_type.value,
+            "effect_type": trick.effect_type,  # effect_type is now a string
             "description": trick.description,
             "difficulty": trick.difficulty.value,
             "props": list(trick.props.items),
@@ -45,10 +70,10 @@ class TrickSchema(BaseModel):
         }
         
         # Include additional fields for review interface
-        if include_book_info and hasattr(trick, 'book'):
-            schema_data["book_title"] = str(trick.book.title) if trick.book else None
-            schema_data["book_author"] = str(trick.book.author) if trick.book else None
+        if include_book_info:
             schema_data["method"] = trick.method
+            schema_data["book_title"] = book_title
+            schema_data["book_author"] = book_author
         
         return cls(**schema_data)
     
@@ -78,15 +103,49 @@ class TrickDetailSchema(TrickSchema):
     method: Optional[str] = None
     book_id: str
     updated_at: datetime
+    book_sources: List[BookSourceSchema] = []
+    similar_tricks: List['TrickSchema'] = []
     
     @classmethod
-    def from_entity(cls, trick: Trick) -> 'TrickDetailSchema':
-        """Create detailed schema from domain entity."""
+    def from_entity(cls, trick: Trick, cross_references: List = None, similar_tricks: List = None) -> 'TrickDetailSchema':
+        """Create detailed schema from domain entity with cross-references."""
         base_data = TrickSchema.from_entity(trick, include_book_info=True).dict()
+        
+        # Start with the primary book source
+        book_sources = [BookSourceSchema(
+            book_id=str(trick.book_id),
+            book_title=base_data.get("book_title", ""),
+            book_author=base_data.get("book_author", ""),
+            page_start=base_data.get("page_start"),
+            page_end=base_data.get("page_end"),
+            method=base_data.get("method"),
+            confidence=base_data.get("confidence")
+        )]
+        
+        # Add similar/identical tricks from cross-references
+        if cross_references:
+            for ref_trick in cross_references:
+                if hasattr(ref_trick, 'book') and ref_trick.book:
+                    book_sources.append(BookSourceSchema(
+                        book_id=str(ref_trick.book_id),
+                        book_title=str(ref_trick.book.title) if ref_trick.book else "",
+                        book_author=str(ref_trick.book.author) if ref_trick.book else "",
+                        page_start=ref_trick.page_range.start if ref_trick.page_range else None,
+                        page_end=ref_trick.page_range.end if ref_trick.page_range else None,
+                        method=ref_trick.method,
+                        confidence=ref_trick.confidence.value if ref_trick.confidence else None
+                    ))
+        
+        similar_tricks_schema = []
+        if similar_tricks:
+            similar_tricks_schema = [TrickSchema.from_entity(t, include_book_info=True) for t in similar_tricks[:5]]
+        
         return cls(
             **base_data,
             book_id=str(trick.book_id),
-            updated_at=trick.updated_at
+            updated_at=trick.updated_at,
+            book_sources=book_sources,
+            similar_tricks=similar_tricks_schema
         )
 
 
@@ -137,6 +196,9 @@ class BookDetailSchema(BookSchema):
     file_path: str
     updated_at: datetime
     tricks: List[TrickSchema]
+    text_content: Optional[str] = None
+    ocr_confidence: Optional[float] = None
+    character_count: Optional[int] = None
     
     @classmethod
     def from_entity(cls, book: Book) -> 'BookDetailSchema':
@@ -146,6 +208,9 @@ class BookDetailSchema(BookSchema):
             **base_data,
             file_path=book.file_path,
             updated_at=book.updated_at,
+            text_content=book.text_content,
+            ocr_confidence=book.ocr_confidence,
+            character_count=book.character_count,
             tricks=[TrickSchema.from_entity(trick) for trick in book.tricks]
         )
 

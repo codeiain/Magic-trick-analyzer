@@ -202,3 +202,22 @@ class Config:
                 issues.append(f"Cannot access watch directory {directory}: {e}")
         
         return issues
+
+
+# Global config instance
+_config_instance = None
+
+
+def get_config() -> Config:
+    """Get the global configuration instance."""
+    global _config_instance
+    if _config_instance is None:
+        _config_instance = Config()
+    return _config_instance
+
+
+def init_config(config_file: Optional[str] = None):
+    """Initialize the global configuration."""
+    global _config_instance
+    _config_instance = Config(config_file)
+    return _config_instance

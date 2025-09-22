@@ -1,3 +1,13 @@
+export interface BookSource {
+  book_id: string;
+  book_title: string;
+  book_author: string;
+  page_start?: number;
+  page_end?: number;
+  method?: string;
+  confidence?: number;
+}
+
 export interface Trick {
   id: string;
   name: string;
@@ -23,6 +33,8 @@ export interface Trick {
 export interface TrickDetail extends Trick {
   book_id: string;
   updated_at: string;
+  book_sources: BookSource[];
+  similar_tricks: Trick[];
 }
 
 export interface Book {
@@ -34,12 +46,18 @@ export interface Book {
   processed_at?: string;
   trick_count: number;
   created_at: string;
+  content?: string;
+  user_rating?: number;
+  user_review?: string;
 }
 
 export interface BookDetail extends Book {
   file_path: string;
   updated_at: string;
   tricks: Trick[];
+  text_content?: string;
+  ocr_confidence?: number;
+  character_count?: number;
 }
 
 export interface CrossReference {
@@ -70,35 +88,26 @@ export interface Statistics {
 }
 
 export interface ReviewStats {
-  total_tricks: number;
-  pending_review: number;
-  accuracy: number;
-  training_examples: number;
-  correct_detections: number;
-  incorrect_detections: number;
+  total_reviews: number;
+  average_rating: number;
+  pending_reviews: number;
+  approved_reviews: number;
+  rejected_reviews: number;
 }
 
-export interface Feedback {
-  trick_id: string;
-  is_correct: boolean;
-  user_notes?: string;
-  suggested_name?: string;
-  suggested_description?: string;
-}
-
-export interface TrainingStatus {
-  status: 'ready' | 'training' | 'completed' | 'error';
-  progress: number;
+export interface ActiveOCRJob {
+  job_id: string;
+  book_title: string;
+  status: 'queued' | 'started';
+  created_at: string;
+  file_path: string;
+  progress?: number;
   message: string;
-  model_info?: Record<string, any>;
 }
 
-export interface ModelInfo {
-  base_model: string;
-  is_fine_tuned: boolean;
-  fine_tuned_path?: string;
-  model_exists: boolean;
-  training_available: boolean;
+export interface ActiveOCRJobsResponse {
+  active_ocr_jobs: ActiveOCRJob[];
+  count: number;
 }
 
 export type ConfidenceLevel = 'high' | 'medium' | 'low';

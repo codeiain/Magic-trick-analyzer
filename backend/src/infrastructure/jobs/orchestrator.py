@@ -91,8 +91,8 @@ def process_pdf_pipeline(job_data: Dict[str, Any]) -> Dict[str, Any]:
         # Submit OCR job and wait for completion
         ocr_job_id = job_queue.enqueue_ocr_processing(**ocr_job_data)
         
-        # Wait for OCR completion (this would be more sophisticated in production)
-        ocr_result = job_queue._wait_for_job_completion(ocr_job_id, timeout=1800)  # 30 min timeout
+        # Wait for OCR completion (increased timeout for large PDFs)
+        ocr_result = job_queue._wait_for_job_completion(ocr_job_id, timeout=3600)  # 60 min timeout
         
         if ocr_result['status'] != 'completed':
             raise Exception(f"OCR processing failed: {ocr_result.get('error', 'Unknown error')}")
@@ -130,8 +130,69 @@ def process_pdf_pipeline(job_data: Dict[str, Any]) -> Dict[str, Any]:
         # Step 3: Database Finalization
         logger.info("Step 3: Finalizing database updates...")
         
-        # This would persist the results to the database
-        # For now, we'll simulate this step
+        # Persist tricks to database
+        persisted_count = 0
+        try:
+            from sqlalchemy import create_engine
+            from sqlalchemy.orm import sessionmaker
+            from ..database.models import TrickModel, EffectTypeModel
+            
+            # Connect to database
+            db_path = '/app/shared/magic_tricks.db'
+            engine = create_engine(f'sqlite:///{db_path}')
+            Session = sessionmaker(bind=engine)
+            session = Session()
+            
+            # Get or create effect types mapping
+            effect_type_mapping = {}
+            existing_types = session.query(EffectTypeModel).all()
+            for et in existing_types:
+                effect_type_mapping[et.name.lower()] = et.id
+            
+            # Persist each trick
+            for trick_data in tricks:
+                try:
+                    # Map effect type to ID
+                    effect_type_name = trick_data.get('effect_type', 'Other')
+                    effect_type_id = effect_type_mapping.get(effect_type_name.lower())
+                    
+                    if not effect_type_id:
+                        # Create new effect type if doesn't exist
+                        new_effect_type = EffectTypeModel(name=effect_type_name)
+                        session.add(new_effect_type)
+                        session.flush()  # Get the ID
+                        effect_type_id = new_effect_type.id
+                        effect_type_mapping[effect_type_name.lower()] = effect_type_id
+                    
+                    # Create trick record
+                    trick_model = TrickModel(
+                        book_id=trick_data['book_id'],
+                        effect_type_id=effect_type_id,
+                        name=trick_data['name'],
+                        description=trick_data['description'],
+                        difficulty=trick_data.get('difficulty', 'Unknown'),
+                        page_start=trick_data.get('page_start'),
+                        confidence=trick_data.get('confidence', 0.7)
+                    )
+                    
+                    session.add(trick_model)
+                    persisted_count += 1
+                    
+                except Exception as trick_error:
+                    logger.error(f"Error persisting individual trick: {trick_error}")
+                    continue
+            
+            # Commit all tricks
+            session.commit()
+            logger.info(f"Successfully persisted {persisted_count}/{len(tricks)} tricks to database")
+            
+            session.close()
+            
+        except Exception as persistence_error:
+            logger.error(f"Error during database persistence: {persistence_error}")
+            if 'session' in locals():
+                session.rollback()
+                session.close()
         
         result = {
             'status': 'completed',
@@ -144,6 +205,7 @@ def process_pdf_pipeline(job_data: Dict[str, Any]) -> Dict[str, Any]:
             },
             'ai_result': {
                 'tricks_detected': len(tricks),
+                'tricks_persisted': persisted_count,
                 'similarities_found': len(similarities)
             },
             'processing_steps': ['ocr', 'ai_processing', 'finalization'],

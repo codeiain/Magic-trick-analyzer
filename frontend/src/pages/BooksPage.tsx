@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { BookOpenIcon, DocumentIcon } from '@heroicons/react/24/outline';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { booksApi } from '../lib/api';
@@ -86,14 +87,23 @@ export default function BooksPage() {
     onMutate: (bookId) => {
       console.log('Starting reprocess for book:', bookId);
     },
-    onSuccess: (_data, bookId) => {
-      console.log('Reprocess completed for book:', bookId);
-      // Refresh the books list
-      queryClient.invalidateQueries({ queryKey: ['books'] });
+    onSuccess: (data, bookId) => {
+      console.log('Reprocess job queued for book:', bookId, 'Job ID:', data.job_id);
+      
+      // If we get a job ID, start monitoring it
+      if (data.job_id) {
+        setCurrentJobId(data.job_id);
+        alert(`AI reprocessing started for "${data.book_title}". Job ID: ${data.job_id}`);
+      } else {
+        // Refresh the books list if no job monitoring needed
+        queryClient.invalidateQueries({ queryKey: ['books'] });
+        alert(`Reprocessing completed for book: ${bookId}`);
+      }
     },
     onError: (error, bookId) => {
       console.error('Reprocess failed for book:', bookId, error);
-      alert('Reprocess failed. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      alert(`Reprocess failed for book ${bookId}: ${errorMessage}`);
     }
   });
 
@@ -110,13 +120,6 @@ export default function BooksPage() {
 
   const triggerFileUpload = () => {
     fileInputRef.current?.click();
-  };
-
-  const handleViewDetails = (bookId: string) => {
-    // Navigate to book details page (you can implement routing later)
-    console.log('View details for book:', bookId);
-    // For now, show an alert
-    alert(`Book details feature coming soon! Book ID: ${bookId}`);
   };
 
   if (isLoading) {
@@ -403,22 +406,37 @@ export default function BooksPage() {
                   
                   <button 
                     onClick={() => {
-                      console.log('Clicking reprocess for book:', book.id);
-                      reprocessMutation.mutate(book.id);
+                      // Confirm reprocessing action
+                      const confirmReprocess = window.confirm(
+                        `Reprocess "${book.title}" with updated AI analysis?\n\n` +
+                        `This will:\n` +
+                        `• Re-analyze existing OCR text with improved AI models\n` +
+                        `• Clear and replace current magic trick detections\n` +
+                        `• Generate new cross-references and similarities\n\n` +
+                        `Continue with reprocessing?`
+                      );
+                      
+                      if (confirmReprocess) {
+                        console.log('Starting AI reprocess for book:', book.id);
+                        reprocessMutation.mutate(book.id);
+                      }
                     }}
-                    disabled={reprocessMutation.isPending}
+                    disabled={reprocessMutation.isPending || !book.processed_at}
                     className="px-4 py-2 text-sm font-semibold text-orange-700 bg-white/60 backdrop-blur-sm border border-orange-200/60 rounded-xl hover:bg-orange-50/80 hover:border-orange-300/60 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 hover:shadow-md hover:-translate-y-0.5"
-                    title="Reprocess book with improved AI detection"
+                    title={book.processed_at 
+                      ? "Reprocess book with updated AI analysis (uses existing OCR text)"
+                      : "Book must be processed first before reprocessing"
+                    }
                   >
                     {reprocessMutation.isPending ? 'Reprocessing...' : 'Reprocess'}
                   </button>
                   
-                  <button 
-                    onClick={() => handleViewDetails(book.id)}
+                  <Link
+                    to={`/books/${book.id}`}
                     className="px-4 py-2 text-sm font-semibold text-blue-700 bg-white/60 backdrop-blur-sm border border-blue-200/60 rounded-xl hover:bg-blue-50/80 hover:border-blue-300/60 transition-all duration-300 hover:shadow-md hover:-translate-y-0.5"
                   >
                     View Details
-                  </button>
+                  </Link>
                 </div>
               </div>
             </div>

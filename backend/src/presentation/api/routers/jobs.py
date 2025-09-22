@@ -47,7 +47,7 @@ class JobUpdateRequest(BaseModel):
     updated_at: Optional[str] = None
 
 # Create router
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+router = APIRouter(tags=["jobs"])
 
 # Job queue instance (will be injected in main.py)
 job_queue: Optional[JobQueue] = None
@@ -160,6 +160,25 @@ async def queue_ai_job(
     except Exception as e:
         logger.error(f"Error queueing AI job: {e}")
         raise HTTPException(status_code=500, detail=f"Error queueing AI job: {str(e)}")
+
+@router.delete("/ai/clear/{book_id}")
+async def clear_book_tricks(book_id: str):
+    """Clear existing AI-detected tricks for a book (for reprocessing)"""
+    
+    try:
+        # This would typically clear tricks from the database
+        # For now, we'll let the AI service handle this during reprocessing
+        
+        logger.info(f"Clearing tricks for book: {book_id}")
+        
+        return {
+            "message": f"Trick clearing requested for book {book_id}",
+            "note": "Tricks will be cleared during reprocessing"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error clearing tricks for book {book_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error clearing tricks: {str(e)}")
 
 @router.delete("/")
 async def cleanup_completed_jobs(queue: JobQueue = Depends(get_job_queue)):

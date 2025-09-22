@@ -14,9 +14,7 @@ print(f"DEBUG: REDIS_URL env var: {os.getenv('REDIS_URL')}")
 print(f"DEBUG: Using Redis URL: {redis_url}")
 init_job_queue(redis_url)
 
-from .api.routers import books, tricks, search, statistics, jobs
-# TODO: Review router disabled - AI training moved to ai-service
-# from .api.routers.review import create_review_router
+from .api.routers import books, tricks, search, statistics, jobs, training
 from ..application.use_cases.magic_use_cases import SearchTricksUseCase
 from ..infrastructure.config import Config
 from ..infrastructure.database.database import DatabaseManager
@@ -118,7 +116,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(books.create_router(process_books_use_case, book_repository, statistics_use_case), 
                       prefix="/api/v1/books", tags=["Books"])
-    app.include_router(tricks.create_router(search_use_case, find_similar_use_case, trick_repository), 
+    app.include_router(tricks.create_router(search_use_case, find_similar_use_case, trick_repository, book_repository), 
                       prefix="/api/v1/tricks", tags=["Tricks"])
     app.include_router(search.create_router(search_use_case), 
                       prefix="/api/v1/search", tags=["Search"])
@@ -127,7 +125,11 @@ def create_app() -> FastAPI:
     
     # Initialize and include jobs router
     jobs.initialize_job_queue(job_queue)
-    app.include_router(jobs.router, prefix="/api/v1")
+    app.include_router(jobs.router, prefix="/api/v1/jobs")
+    
+    # Initialize and include training router
+    training.initialize_job_queue(job_queue)
+    app.include_router(training.router, prefix="/api/v1/training")
     
     # Cross-reference router
     try:
@@ -137,18 +139,6 @@ def create_app() -> FastAPI:
         logger.info("Cross-reference router loaded successfully")
     except Exception as e:
         logger.warning(f"Failed to load cross-reference router: {e}")
-    
-    # TODO: Review router disabled - AI training moved to ai-service
-    # review_router = create_review_router(
-    #     trick_repository=trick_repository,
-    #     book_repository=book_repository,
-    #     search_use_case=search_use_case,
-    #     training_data_generator=training_data_generator,
-    #     model_fine_tuner=model_fine_tuner,
-    #     adaptive_detector=adaptive_detector
-    # )
-    # 
-    # app.include_router(review_router, prefix="/api/v1/review", tags=["Review"])
     
     @app.get("/")
     async def root():

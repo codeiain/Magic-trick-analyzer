@@ -10,26 +10,10 @@ from uuid import UUID
 
 class DifficultyLevel(Enum):
     """Enumeration for trick difficulty levels."""
-    BEGINNER = "beginner"
-    INTERMEDIATE = "intermediate"
-    ADVANCED = "advanced"
-    EXPERT = "expert"
-
-
-class EffectType(Enum):
-    """Enumeration for magic effect types."""
-    CARD_TRICK = "card_trick"
-    COIN_MAGIC = "coin_magic"
-    MENTALISM = "mentalism"
-    STAGE_MAGIC = "stage_magic"
-    CLOSE_UP = "close_up"
-    CARD_FORCE = "card_force"
-    VANISH = "vanish"
-    PRODUCTION = "production"
-    TRANSFORMATION = "transformation"
-    RESTORATION = "restoration"
-    PREDICTION = "prediction"
-    MIND_READING = "mind_reading"
+    BEGINNER = "Beginner"
+    INTERMEDIATE = "Intermediate"
+    ADVANCED = "Advanced"
+    EXPERT = "Expert"
 
 
 @dataclass(frozen=True)

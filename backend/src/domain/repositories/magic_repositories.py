@@ -8,7 +8,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from ..entities.magic import Book, Trick, CrossReference
-from ..value_objects.common import BookId, TrickId, Author, EffectType
+from ..value_objects.common import BookId, TrickId, Author
 
 
 class BookRepository(ABC):
@@ -84,7 +84,7 @@ class TrickRepository(ABC):
         pass
     
     @abstractmethod
-    async def find_by_effect_type(self, effect_type: EffectType) -> List[Trick]:
+    async def find_by_effect_type(self, effect_type: str) -> List[Trick]:
         """Find tricks by effect type."""
         pass
     

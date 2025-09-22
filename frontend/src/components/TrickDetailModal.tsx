@@ -1,10 +1,10 @@
 import { Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { XMarkIcon, BookOpenIcon } from '@heroicons/react/24/outline';
-import type { Trick } from '../types';
+import type { Trick, TrickDetail } from '../types';
 
 interface TrickDetailModalProps {
-  trick: Trick | null;
+  trick: Trick | TrickDetail | null;
   isOpen: boolean;
   onClose: () => void;
   showReviewActions?: boolean;
@@ -19,6 +19,22 @@ export default function TrickDetailModal({
   onReview 
 }: TrickDetailModalProps) {
   if (!trick) return null;
+
+  // Helper function to check if trick is detailed
+  const isDetailedTrick = (trick: Trick | TrickDetail): trick is TrickDetail => {
+    return 'book_sources' in trick && Array.isArray(trick.book_sources);
+  };
+
+  const bookSources = isDetailedTrick(trick) ? trick.book_sources : 
+    (trick.book_title || trick.book_author) ? [{
+      book_id: '',
+      book_title: trick.book_title || '',
+      book_author: trick.book_author || '',
+      page_start: trick.page_start,
+      page_end: trick.page_end,
+      method: trick.method,
+      confidence: trick.confidence
+    }] : [];
 
   const handleReview = (approved: boolean) => {
     if (onReview) {
@@ -92,25 +108,46 @@ export default function TrickDetailModal({
 
                 {/* Content */}
                 <div className="space-y-6">
-                  {/* Book Information */}
-                  {(trick.book_title || trick.book_author) && (
+                  {/* Book Sources */}
+                  {bookSources.length > 0 && (
                     <div className="bg-gray-50 p-4 rounded-lg">
                       <div className="flex items-start space-x-3">
                         <BookOpenIcon className="h-6 w-6 text-gray-400 mt-0.5 flex-shrink-0" />
                         <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900 mb-1">Source Book</h4>
-                          {trick.book_title && (
-                            <p className="text-gray-800 font-medium">{trick.book_title}</p>
-                          )}
-                          {trick.book_author && (
-                            <p className="text-gray-600 text-sm">by {trick.book_author}</p>
-                          )}
-                          {(trick.page_start || trick.page_number) && (
-                            <p className="text-gray-500 text-sm mt-1">
-                              Page {trick.page_start || trick.page_number}
-                              {trick.page_end && trick.page_start !== trick.page_end && ` - ${trick.page_end}`}
-                            </p>
-                          )}
+                          <h4 className="font-semibold text-gray-900 mb-1">
+                            {bookSources.length === 1 ? 'Source Book' : `Found in ${bookSources.length} Books`}
+                          </h4>
+                          <div className="space-y-3">
+                            {bookSources.map((source, idx) => (
+                              <div key={idx} className={idx > 0 ? "pt-3 border-t border-gray-200" : ""}>
+                                {source.book_title && (
+                                  <p className="text-gray-800 font-medium">{source.book_title}</p>
+                                )}
+                                {source.book_author && (
+                                  <p className="text-gray-600 text-sm">by {source.book_author}</p>
+                                )}
+                                {(source.page_start || source.page_end) && (
+                                  <p className="text-gray-500 text-sm">
+                                    Page {source.page_start}
+                                    {source.page_end && source.page_start !== source.page_end && ` - ${source.page_end}`}
+                                  </p>
+                                )}
+                                {source.confidence !== undefined && (
+                                  <p className="text-gray-500 text-sm">
+                                    Detection Confidence: {Math.round(source.confidence * 100)}%
+                                  </p>
+                                )}
+                                {source.method && (
+                                  <div className="mt-2">
+                                    <h5 className="font-medium text-gray-800 text-sm">Performance Method:</h5>
+                                    <p className="text-gray-700 text-sm leading-relaxed mt-1">
+                                      {source.method}
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -122,16 +159,6 @@ export default function TrickDetailModal({
                       <h4 className="font-semibold text-gray-900 mb-2">Description</h4>
                       <p className="text-gray-700 leading-relaxed">
                         {trick.description}
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Method */}
-                  {trick.method && (
-                    <div>
-                      <h4 className="font-semibold text-gray-900 mb-2">Method</h4>
-                      <p className="text-gray-700 leading-relaxed">
-                        {trick.method}
                       </p>
                     </div>
                   )}
@@ -177,6 +204,33 @@ export default function TrickDetailModal({
                       <p className="text-gray-600 text-sm font-mono bg-gray-50 p-2 rounded">
                         {trick.source_document}
                       </p>
+                    </div>
+                  )}
+
+                  {/* Similar Tricks */}
+                  {isDetailedTrick(trick) && trick.similar_tricks && trick.similar_tricks.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-2">Similar Tricks</h4>
+                      <div className="space-y-2">
+                        {trick.similar_tricks.slice(0, 3).map((similarTrick, idx) => (
+                          <div key={idx} className="bg-blue-50 p-3 rounded border-l-4 border-blue-200">
+                            <p className="font-medium text-blue-900">{similarTrick.name}</p>
+                            {similarTrick.book_title && (
+                              <p className="text-blue-700 text-sm">from {similarTrick.book_title}</p>
+                            )}
+                            {similarTrick.effect_type && (
+                              <span className="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs mt-1">
+                                {similarTrick.effect_type.replace('_', ' ')}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                        {trick.similar_tricks.length > 3 && (
+                          <p className="text-gray-500 text-sm">
+                            ... and {trick.similar_tricks.length - 3} more similar tricks
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
 

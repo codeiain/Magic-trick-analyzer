@@ -4,10 +4,10 @@ import { Toaster } from 'react-hot-toast';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import TricksPage from './pages/TricksPage';
-import ReviewPage from './pages/ReviewPage';
 import SearchPage from './pages/SearchPage';
 import TrainingPage from './pages/TrainingPage';
 import BooksPage from './pages/BooksPage';
+import BookDetailPage from './pages/BookDetailPage';
 import TrickDetailPage from './pages/TrickDetailPage';
 
 // Create a client
@@ -32,8 +32,8 @@ function App() {
               <Route path="/tricks" element={<TricksPage />} />
               <Route path="/tricks/:id" element={<TrickDetailPage />} />
               <Route path="/books" element={<BooksPage />} />
+              <Route path="/books/:id" element={<BookDetailPage />} />
               <Route path="/search" element={<SearchPage />} />
-              <Route path="/review" element={<ReviewPage />} />
               <Route path="/training" element={<TrainingPage />} />
             </Routes>
           </Layout>

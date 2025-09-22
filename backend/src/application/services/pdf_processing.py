@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 
 from ...domain.entities.magic import Book, Trick
-from ...domain.value_objects.common import Title, Author, BookId, EffectType, Confidence
+from ...domain.value_objects.common import Title, Author, BookId, Confidence
 from ...domain.repositories.magic_repositories import BookRepository, TrickRepository
 
 

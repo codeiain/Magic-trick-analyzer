@@ -28,6 +28,10 @@ class BookModel(Base):
     processed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    # OCR content for reprocessing
+    text_content = Column(Text, nullable=True)
+    ocr_confidence = Column(Float, nullable=True)
+    character_count = Column(Integer, nullable=True)
 
 
 class TrickModel(Base):
@@ -46,6 +50,69 @@ class TrickModel(Base):
     page_start = Column(Integer, nullable=True)
     page_end = Column(Integer, nullable=True)
     confidence = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainingReviewModel(Base):
+    """SQLAlchemy model for training data reviews."""
+    
+    __tablename__ = "training_reviews"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    trick_id = Column(String, ForeignKey("tricks.id"), nullable=False)
+    book_id = Column(String, ForeignKey("books.id"), nullable=False)
+    reviewer_id = Column(String, nullable=True)  # Future user system
+    
+    # Review status
+    is_accurate = Column(Boolean, nullable=True)  # True=correct, False=incorrect, None=pending
+    confidence_score = Column(Float, nullable=True)  # 0.0-1.0 reviewer confidence
+    review_notes = Column(Text, nullable=True)
+    
+    # Corrected information (if original was wrong)
+    corrected_name = Column(String, nullable=True)
+    corrected_effect_type = Column(String, nullable=True)
+    corrected_description = Column(Text, nullable=True)
+    corrected_difficulty = Column(String, nullable=True)
+    
+    # Training flags
+    use_for_training = Column(Boolean, default=True)
+    quality_score = Column(Float, nullable=True)  # Overall quality assessment
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TrainingDatasetModel(Base):
+    """SQLAlchemy model for training datasets."""
+    
+    __tablename__ = "training_datasets"
+    
+    id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = Column(String, nullable=False)
+    description = Column(Text, nullable=True)
+    version = Column(String, nullable=False, default="1.0")
+    
+    # Dataset statistics
+    total_tricks = Column(Integer, nullable=False, default=0)
+    reviewed_tricks = Column(Integer, nullable=False, default=0)
+    accuracy_rate = Column(Float, nullable=True)  # % of accurate detections
+    
+    # Dataset status
+    status = Column(String, nullable=False, default="building")  # building, ready, training, trained, deployed
+    is_active = Column(Boolean, default=False)
+    
+    # Training progress
+    training_progress = Column(Integer, default=0)  # 0-100 percentage
+    training_message = Column(String, nullable=True)
+    
+    # Training results
+    last_training_job_id = Column(String, nullable=True)
+    model_accuracy = Column(Float, nullable=True)
+    validation_score = Column(Float, nullable=True)
+    model_version = Column(String, nullable=True)
+    training_duration = Column(Float, nullable=True)  # seconds
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -118,21 +185,27 @@ def save_book_ocr_results(book_id: str, title: str, file_path: str, text_content
         existing_book = session.query(BookModel).filter(BookModel.id == book_id).first()
         
         if existing_book:
-            # Update existing book with basic info
+            # Update existing book with OCR results
+            existing_book.text_content = text_content
+            existing_book.ocr_confidence = confidence
+            existing_book.character_count = character_count
             existing_book.processed_at = datetime.utcnow()
             existing_book.updated_at = datetime.utcnow()
-            print(f"Updated existing book {book_id}")
+            print(f"Updated existing book {book_id} with OCR content")
         else:
-            # Create new book record using only existing columns
+            # Create new book record with OCR content
             book = BookModel(
                 id=book_id,
                 title=title,
                 author="Unknown",  # Will be updated later if available
                 file_path=file_path,
+                text_content=text_content,
+                ocr_confidence=confidence,
+                character_count=character_count,
                 processed_at=datetime.utcnow()
             )
             session.add(book)
-            print(f"Created new book record for {book_id}")
+            print(f"Created new book record for {book_id} with OCR content")
         
         session.commit()
         session.close()

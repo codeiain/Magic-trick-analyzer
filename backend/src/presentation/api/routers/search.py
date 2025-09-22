@@ -7,7 +7,6 @@ from typing import List, Optional
 from ....application.use_cases.magic_use_cases import (
     SearchTricksUseCase, SearchTricksRequest
 )
-from ....domain.value_objects.common import EffectType
 from .schemas import TrickSchema, SearchResultSchema
 
 
@@ -42,14 +41,8 @@ def create_router(search_tricks_use_case: SearchTricksUseCase) -> APIRouter:
             
             # Validate and set effect type
             if effect_type:
-                try:
-                    request.effect_type = EffectType(effect_type.lower())
-                except ValueError:
-                    available_types = [e.value for e in EffectType]
-                    raise HTTPException(
-                        status_code=400, 
-                        detail=f"Invalid effect type '{effect_type}'. Available types: {available_types}"
-                    )
+                # Since effect_type is now a string, just pass it directly
+                request.effect_type = effect_type.lower()
             
             # Execute search
             response = await search_tricks_use_case.execute(request)
@@ -91,13 +84,15 @@ def create_router(search_tricks_use_case: SearchTricksUseCase) -> APIRouter:
     @router.get("/suggestions/effect-types")
     async def get_effect_type_suggestions():
         """Get available effect types for search filters."""
+        # TODO: Query the database for actual effect types
+        effect_types = ["Card", "Coin", "Mentalism", "Stage", "Close-up", "General"]
         return {
             "effect_types": [
                 {
-                    "value": effect.value,
-                    "label": effect.value.replace("_", " ").title()
+                    "value": effect_type.lower(),
+                    "label": effect_type
                 }
-                for effect in EffectType
+                for effect_type in effect_types
             ]
         }
     

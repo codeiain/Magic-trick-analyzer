@@ -12,7 +12,7 @@ from pathlib import Path
 import tempfile
 import os
 
-from ..api.routers import books, tricks, search, statistics
+from ..api.routers import books, tricks, search, statistics, training
 from ...application.use_cases.magic_use_cases import (
     ProcessBooksUseCase, SearchTricksUseCase, FindSimilarTricksUseCase,
     GenerateCrossReferencesUseCase, GetBookStatisticsUseCase
@@ -71,7 +71,8 @@ class MagicTrickAnalyzerApp:
         
         # Infrastructure services
         self.pdf_extractor = PDFTextExtractor(enable_ocr=True)
-        self.trick_detector = TrickDetector()
+        # TODO: TrickDetector moved to ai-service
+        # self.trick_detector = TrickDetector()
         
         # Domain services
         self.trick_analysis_service = TrickAnalysisService()
@@ -137,7 +138,9 @@ class MagicTrickAnalyzerApp:
             tricks.create_router(
                 self.search_tricks_use_case,
                 self.find_similar_tricks_use_case,
-                self.trick_repository
+                self.trick_repository,
+                self.book_repository,
+                self.cross_ref_repository
             ),
             prefix="/api/v1/tricks",
             tags=["tricks"]
@@ -153,6 +156,12 @@ class MagicTrickAnalyzerApp:
             statistics.create_router(self.get_statistics_use_case),
             prefix="/api/v1/statistics",
             tags=["statistics"]
+        )
+        
+        self.app.include_router(
+            training.router,
+            prefix="/api/v1/training",
+            tags=["training"]
         )
         
         # Health check endpoint

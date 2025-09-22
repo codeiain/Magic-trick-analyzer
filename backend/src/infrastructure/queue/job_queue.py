@@ -20,7 +20,7 @@ class JobQueue:
     
     def __init__(self, redis_url: str = "redis://localhost:6379/0"):
         self.redis_url = redis_url
-        self.redis_conn = redis.from_url(redis_url, decode_responses=True)
+        self.redis_conn = redis.from_url(redis_url, decode_responses=True, encoding='utf-8', encoding_errors='replace')
         
         # Create different queues for different types of jobs
         self.ocr_queue = Queue('ocr', connection=self.redis_conn)
@@ -31,6 +31,7 @@ class JobQueue:
     
     def enqueue_ocr_job(self, file_path: str, book_metadata: Dict[str, Any]) -> str:
         """Queue an OCR processing job"""
+        # Create initial job data without job_id
         job_data = {
             'type': 'ocr',
             'file_path': file_path,
@@ -39,11 +40,16 @@ class JobQueue:
             'created_at': datetime.utcnow().isoformat()
         }
         
+        # Enqueue the job
         job = self.ocr_queue.enqueue(
             'ocr_processor.process_pdf',
             job_data,
-            job_timeout='30m'  # 30 minute timeout for OCR
+            job_timeout='60m'  # 60 minute timeout for OCR (increased for large PDFs)
         )
+        
+        # Update the job data to include the job ID by modifying the RQ job's data
+        job_data['job_id'] = job.id
+        job.save()
         
         # Store job metadata in Redis
         job_key = f"job:{job.id}"
@@ -157,6 +163,39 @@ class JobQueue:
         logger.info(f"Training job queued: {job.id}")
         return job.id
     
+    def enqueue(self, func_name: str, *args, job_timeout: str = '30m', **kwargs) -> Any:
+        """Generic enqueue method for compatibility"""
+        # Determine which queue to use based on function name
+        if 'train' in func_name:
+            queue = self.training_queue
+        elif 'ocr' in func_name:
+            queue = self.ocr_queue
+        else:
+            queue = self.ai_queue
+        
+        job = queue.enqueue(
+            func_name,
+            *args,
+            timeout=job_timeout,
+            job_timeout=job_timeout,
+            **kwargs
+        )
+        
+        # Store job metadata
+        job_key = f"job:{job.id}"
+        self.redis_conn.hset(job_key, mapping={
+            'id': job.id,
+            'type': 'generic',
+            'status': 'queued',
+            'function': func_name,
+            'created_at': datetime.utcnow().isoformat(),
+            'queue': queue.name
+        })
+        self.redis_conn.expire(job_key, timedelta(hours=24))
+        
+        logger.info(f"Generic job queued: {job.id} for function: {func_name}")
+        return job
+    
     def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:
         """Get job status and metadata"""
         job_key = f"job:{job_id}"
@@ -190,6 +229,11 @@ class JobQueue:
                     job_data['error'] = str(rq_job.exc_info)
             else:
                 job_data['rq_status'] = 'not_found'
+        except UnicodeDecodeError as unicode_error:
+            logger.warning(f"Unicode decode error for RQ job {job_id}: {unicode_error}")
+            # Don't try to fetch RQ data if it contains binary data, rely on our metadata
+            job_data['rq_status'] = 'metadata_only'
+            job_data['warning'] = 'RQ job contains binary data, using metadata only'
         except Exception as e:
             logger.error(f"Error fetching RQ job {job_id}: {e}")
             job_data['rq_status'] = 'error'
@@ -250,19 +294,185 @@ class JobQueue:
         for job_key in job_keys:
             job_data = self.redis_conn.hgetall(job_key)
             if job_data and (not job_type or job_data.get('type') == job_type):
-                # Get current RQ status
+                job_id = job_data.get('id', '')
+                
+                # Try to get RQ status using the approach that works
+                try:
+                    # Direct Redis access for RQ status
+                    rq_job_key = f"rq:job:{job_id}"
+                    rq_status = self.redis_conn.hget(rq_job_key, 'status')
+                    
+                    if rq_status:
+                        # Convert bytes to string if needed
+                        if isinstance(rq_status, bytes):
+                            rq_status = rq_status.decode('utf-8')
+                        
+                        # Update both rq_status and status fields
+                        job_data['rq_status'] = rq_status
+                        job_data['status'] = rq_status
+                    else:
+                        job_data['rq_status'] = 'not_found'
+                        
+                except Exception as e:
+                    job_data['rq_status'] = 'error'
+                    logger.warning(f"Could not get RQ status for job {job_id}: {e}")
+                
+                active_jobs.append(job_data)
+        
+        return active_jobs
+    
+    def list_jobs(self, status_filter: str = None, limit: int = 50) -> List[Dict[str, Any]]:
+        """List jobs with optional status filter and limit"""
+        pattern = "job:*"
+        job_keys = self.redis_conn.keys(pattern)
+        
+        jobs = []
+        for job_key in job_keys:
+            job_data = self.redis_conn.hgetall(job_key)
+            if job_data:
+                # Get current RQ status with error handling
                 try:
                     queue_name = job_data.get('queue', 'ocr')
                     queue = Queue(queue_name, connection=self.redis_conn)
                     rq_job = queue.fetch_job(job_data['id'])
                     if rq_job:
                         job_data['rq_status'] = rq_job.get_status()
-                except:
+                        job_data['status'] = rq_job.get_status()  # For compatibility
+                    else:
+                        job_data['rq_status'] = 'not_found'
+                        job_data['status'] = 'not_found'
+                except UnicodeDecodeError:
+                    # If RQ job contains binary data, rely on our metadata status
+                    job_data['rq_status'] = 'metadata_only'
+                    job_data['status'] = job_data.get('status', 'unknown')
+                except Exception:
                     job_data['rq_status'] = 'unknown'
+                    job_data['status'] = 'unknown'
                 
-                active_jobs.append(job_data)
+                # Apply status filter if provided
+                if not status_filter or job_data.get('status') == status_filter:
+                    # Convert bytes to strings for JSON serialization
+                    clean_job_data = {}
+                    for key, value in job_data.items():
+                        if isinstance(value, bytes):
+                            clean_job_data[key] = value.decode('utf-8')
+                        else:
+                            clean_job_data[key] = value
+                    
+                    # Ensure required fields for JobStatusResponse
+                    clean_job_data['job_id'] = clean_job_data.get('id', 'unknown')
+                    if 'created_at' not in clean_job_data:
+                        clean_job_data['created_at'] = datetime.utcnow().isoformat()
+                    
+                    jobs.append(clean_job_data)
+                    
+                    if len(jobs) >= limit:
+                        break
         
-        return active_jobs
+        # Sort by creation time (most recent first)
+        jobs.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+        
+        return jobs
+    
+    def cancel_job(self, job_id: str) -> bool:
+        """Cancel a specific job by ID"""
+        try:
+            # Get job metadata to determine which queue to check
+            job_key = f"job:{job_id}"
+            job_data = self.redis_conn.hgetall(job_key)
+            
+            if not job_data:
+                logger.warning(f"Job {job_id} not found in metadata")
+                return False
+                
+            queue_name = job_data.get('queue', 'ocr')
+            
+            # Get the appropriate queue
+            if queue_name == 'training':
+                queue = self.training_queue
+            elif queue_name == 'ai':
+                queue = self.ai_queue
+            else:
+                queue = self.ocr_queue
+            
+            # Try to cancel the RQ job
+            try:
+                rq_job = queue.fetch_job(job_id)
+                if rq_job:
+                    rq_job.cancel()
+                    logger.info(f"Cancelled RQ job {job_id}")
+                else:
+                    logger.warning(f"RQ job {job_id} not found, may have already completed")
+            except Exception as e:
+                logger.warning(f"Error cancelling RQ job {job_id}: {e}")
+            
+            # Update our job metadata
+            self.update_job_status(job_id, 'cancelled', 
+                                 cancelled_at=datetime.utcnow().isoformat())
+            
+            logger.info(f"Job {job_id} marked as cancelled")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error cancelling job {job_id}: {e}")
+            return False
+    
+    def remove_job(self, job_id: str) -> bool:
+        """Remove a job completely from the system"""
+        try:
+            job_key = f"job:{job_id}"
+            job_data = self.redis_conn.hgetall(job_key)
+            
+            if not job_data:
+                logger.warning(f"Job {job_id} not found in metadata")
+                return False
+            
+            queue_name = job_data.get('queue', 'ocr')
+            
+            # Get the appropriate queue and try to cancel/remove the RQ job
+            if queue_name == 'training':
+                queue = self.training_queue
+            elif queue_name == 'ai':
+                queue = self.ai_queue
+            else:
+                queue = self.ocr_queue
+            
+            try:
+                rq_job = queue.fetch_job(job_id)
+                if rq_job:
+                    # Cancel if it's running
+                    if rq_job.get_status() in ['queued', 'started']:
+                        rq_job.cancel()
+                    # Delete the RQ job
+                    rq_job.delete()
+                    logger.info(f"Deleted RQ job {job_id}")
+            except Exception as e:
+                logger.warning(f"Error deleting RQ job {job_id}: {e}")
+            
+            # Remove our job metadata
+            self.redis_conn.delete(job_key)
+            logger.info(f"Removed job metadata for {job_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error removing job {job_id}: {e}")
+            return False
+    
+    def clear_jobs_by_status(self, status: str) -> int:
+        """Clear all jobs with a specific status"""
+        pattern = "job:*"
+        job_keys = self.redis_conn.keys(pattern)
+        
+        cleared_count = 0
+        for job_key in job_keys:
+            job_data = self.redis_conn.hgetall(job_key)
+            if job_data and job_data.get('status') == status:
+                job_id = job_data.get('id')
+                if job_id and self.remove_job(job_id):
+                    cleared_count += 1
+        
+        logger.info(f"Cleared {cleared_count} jobs with status '{status}'")
+        return cleared_count
     
     def clear_completed_jobs(self, max_age_hours: int = 24):
         """Clear completed jobs older than max_age_hours"""
@@ -292,6 +502,34 @@ class JobQueue:
         logger.info(f"Cleared {cleared_count} completed jobs")
         return cleared_count
     
+    def get_job(self, job_id: str):
+        """Get RQ job object by ID (for compatibility with training API)"""
+        try:
+            # Get job metadata to determine which queue to check
+            job_key = f"job:{job_id}"
+            job_data = self.redis_conn.hgetall(job_key)
+            
+            if not job_data:
+                return None
+                
+            queue_name = job_data.get('queue', 'training')  # Default to training queue
+            
+            # Get the appropriate queue
+            if queue_name == 'training':
+                queue = self.training_queue
+            elif queue_name == 'ai':
+                queue = self.ai_queue
+            else:
+                queue = self.ocr_queue
+            
+            # Fetch the RQ job
+            rq_job = queue.fetch_job(job_id)
+            return rq_job
+            
+        except Exception as e:
+            logger.error(f"Error getting job {job_id}: {e}")
+            return None
+
     def _wait_for_job_completion(self, job_id: str, timeout: int = 900) -> Dict[str, Any]:
         """
         Wait for a job to complete and return its result

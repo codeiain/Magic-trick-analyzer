@@ -13,10 +13,10 @@ from ...domain.repositories.magic_repositories import (
     BookRepository, TrickRepository, CrossReferenceRepository
 )
 from ...domain.value_objects.common import (
-    BookId, TrickId, Author, Title, EffectType, DifficultyLevel,
+    BookId, TrickId, Author, Title, DifficultyLevel,
     Props, PageRange, Confidence
 )
-from ..database.models import BookModel, TrickModel, CrossReferenceModel, DatabaseConnection
+from ..database.models import BookModel, TrickModel, CrossReferenceModel, EffectTypeModel, DatabaseConnection
 from uuid import UUID
 
 
@@ -41,6 +41,9 @@ class SQLBookRepository(BookRepository):
                 existing.file_path = book.file_path
                 existing.publication_year = book.publication_year
                 existing.isbn = book.isbn
+                existing.text_content = book.text_content
+                existing.ocr_confidence = book.ocr_confidence
+                existing.character_count = book.character_count
                 existing.processed_at = book.processed_at
                 existing.updated_at = book.updated_at
             else:
@@ -52,6 +55,9 @@ class SQLBookRepository(BookRepository):
                     file_path=book.file_path,
                     publication_year=book.publication_year,
                     isbn=book.isbn,
+                    text_content=book.text_content,
+                    ocr_confidence=book.ocr_confidence,
+                    character_count=book.character_count,
                     processed_at=book.processed_at,
                     created_at=book.created_at,
                     updated_at=book.updated_at
@@ -156,6 +162,9 @@ class SQLBookRepository(BookRepository):
             file_path=model.file_path,
             publication_year=model.publication_year,
             isbn=model.isbn,
+            text_content=model.text_content,
+            ocr_confidence=model.ocr_confidence,
+            character_count=model.character_count,
             book_id=BookId(UUID(model.id)),
             processed_at=model.processed_at
         )
@@ -178,12 +187,12 @@ class SQLBookRepository(BookRepository):
     def _trick_model_to_entity(self, model: TrickModel) -> Trick:
         """Convert trick database model to domain entity."""
         from ...domain.value_objects.common import (
-            TrickId, Title, EffectType, DifficultyLevel, Props, Confidence, PageRange
+            TrickId, Title, DifficultyLevel, Props, Confidence, PageRange
         )
         
         trick = Trick(
             name=Title(model.name),
-            effect_type=EffectType(model.effect_type),
+            effect_type=model.effect_type_name,  # Use the renamed property that gets the name from the relationship
             description=model.description or "",
             difficulty=DifficultyLevel(model.difficulty),
             props=Props(model.props.split(',') if model.props else []),
@@ -259,14 +268,17 @@ class SQLTrickRepository(TrickRepository):
         finally:
             session.close()
     
-    async def find_by_effect_type(self, effect_type: EffectType) -> List[Trick]:
+    async def find_by_effect_type(self, effect_type: str) -> List[Trick]:
         """Find tricks by effect type."""
         session = self._db.get_session()
         try:
-            trick_models = session.query(TrickModel).filter_by(
-                effect_type=effect_type.value
+            # Join with EffectTypeModel to find tricks by effect type name
+            trick_models = session.query(TrickModel).join(
+                EffectTypeModel, TrickModel.effect_type_id == EffectTypeModel.id
+            ).filter(
+                EffectTypeModel.name == effect_type
             ).all()
-            return [self._model_to_entity(model) for model in trick_models]
+            return [self._trick_model_to_entity(model) for model in trick_models]
         finally:
             session.close()
     
@@ -297,13 +309,15 @@ class SQLTrickRepository(TrickRepository):
         session = self._db.get_session()
         try:
             # Simplified implementation - in production would use vector embeddings
-            trick_models = session.query(TrickModel).filter(
+            trick_models = session.query(TrickModel).join(
+                EffectTypeModel, TrickModel.effect_type_id == EffectTypeModel.id
+            ).filter(
                 and_(
-                    TrickModel.effect_type == trick.effect_type.value,
+                    EffectTypeModel.name == trick.effect_type,
                     TrickModel.id != str(trick.id)
                 )
             ).all()
-            return [self._model_to_entity(model) for model in trick_models]
+            return [self._trick_model_to_entity(model) for model in trick_models]
         finally:
             session.close()
     
@@ -354,36 +368,66 @@ class SQLTrickRepository(TrickRepository):
         finally:
             session.close()
     
-    def _entity_to_model(self, trick: Trick) -> TrickModel:
+    def _entity_to_model(self, trick: Trick, session: Session = None) -> TrickModel:
         """Convert domain entity to database model."""
-        return TrickModel(
-            id=str(trick.id),
-            book_id=str(trick.book_id),
-            name=str(trick.name),
-            effect_type=trick.effect_type.value,
-            description=trick.description,
-            method=trick.method,
-            props=json.dumps(list(trick.props.items)) if trick.props else None,
-            difficulty=trick.difficulty.value,
-            page_start=trick.page_range.start if trick.page_range else None,
-            page_end=trick.page_range.end if trick.page_range else None,
-            confidence=trick.confidence.value if trick.confidence else None,
-            created_at=trick.created_at,
-            updated_at=trick.updated_at
-        )
-    
+        # Look up effect type ID from the name
+        if session is None:
+            session = self._db.get_session()
+            close_session = True
+        else:
+            close_session = False
+        
+        try:
+            effect_type_model = session.query(EffectTypeModel).filter_by(name=trick.effect_type).first()
+            if not effect_type_model:
+                # Create a new effect type if it doesn't exist (fallback)
+                effect_type_model = EffectTypeModel(id=trick.effect_type, name=trick.effect_type, description="", category="other")
+                session.add(effect_type_model)
+                session.flush()
+            
+            return TrickModel(
+                id=str(trick.id),
+                book_id=str(trick.book_id),
+                name=str(trick.name),
+                effect_type_id=effect_type_model.id,
+                description=trick.description,
+                method=trick.method,
+                props=json.dumps(list(trick.props.items)) if trick.props else None,
+                difficulty=trick.difficulty.value,
+                page_start=trick.page_range.start if trick.page_range else None,
+                page_end=trick.page_range.end if trick.page_range else None,
+                confidence=trick.confidence.value if trick.confidence else None,
+                created_at=trick.created_at,
+                updated_at=trick.created_at
+            )
+        finally:
+            if close_session:
+                session.close()
+
     def _update_trick_model(self, model: TrickModel, trick: Trick) -> None:
         """Update existing model with entity data."""
-        model.name = str(trick.name)
-        model.effect_type = trick.effect_type.value
-        model.description = trick.description
-        model.method = trick.method
-        model.props = json.dumps(list(trick.props.items)) if trick.props else None
-        model.difficulty = trick.difficulty.value
-        model.page_start = trick.page_range.start if trick.page_range else None
-        model.page_end = trick.page_range.end if trick.page_range else None
-        model.confidence = trick.confidence.value if trick.confidence else None
-        model.updated_at = trick.updated_at
+        # Get session to look up effect type
+        session = self._db.get_session()
+        try:
+            effect_type_model = session.query(EffectTypeModel).filter_by(name=trick.effect_type).first()
+            if not effect_type_model:
+                # Create a new effect type if it doesn't exist (fallback)
+                effect_type_model = EffectTypeModel(id=trick.effect_type, name=trick.effect_type, description="", category="other")
+                session.add(effect_type_model)
+                session.flush()
+            
+            model.name = str(trick.name)
+            model.effect_type_id = effect_type_model.id
+            model.description = trick.description
+            model.method = trick.method
+            model.props = json.dumps(list(trick.props.items)) if trick.props else None
+            model.difficulty = trick.difficulty.value
+            model.page_start = trick.page_range.start if trick.page_range else None
+            model.page_end = trick.page_range.end if trick.page_range else None
+            model.confidence = trick.confidence.value if trick.confidence else None
+            model.updated_at = trick.updated_at
+        finally:
+            session.close()
     
     def _model_to_entity(self, model: TrickModel) -> Trick:
         """Convert database model to domain entity."""
@@ -408,7 +452,7 @@ class SQLTrickRepository(TrickRepository):
         trick = Trick(
             name=Title(model.name),
             book_id=BookId(UUID(model.book_id)),
-            effect_type=EffectType(model.effect_type),
+            effect_type=model.effect_type_name,  # Use the renamed property that gets the name from the relationship
             description=model.description,
             method=model.method,
             props=props,

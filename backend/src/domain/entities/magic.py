@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from ..value_objects.common import (
     Author, BookId, Title, TrickId, Props, PageRange, 
-    DifficultyLevel, EffectType, Confidence
+    DifficultyLevel, Confidence
 )
 
 
@@ -25,6 +25,9 @@ class Book:
         file_path: str,
         publication_year: Optional[int] = None,
         isbn: Optional[str] = None,
+        text_content: Optional[str] = None,
+        ocr_confidence: Optional[float] = None,
+        character_count: Optional[int] = None,
         book_id: Optional[BookId] = None,
         processed_at: Optional[datetime] = None
     ):
@@ -34,6 +37,9 @@ class Book:
         self._file_path = file_path
         self._publication_year = publication_year
         self._isbn = isbn
+        self._text_content = text_content
+        self._ocr_confidence = ocr_confidence
+        self._character_count = character_count
         self._processed_at = processed_at
         self._tricks: List['Trick'] = []
         self._created_at = datetime.utcnow()
@@ -66,6 +72,18 @@ class Book:
     @property
     def processed_at(self) -> Optional[datetime]:
         return self._processed_at
+    
+    @property
+    def text_content(self) -> Optional[str]:
+        return self._text_content
+    
+    @property
+    def ocr_confidence(self) -> Optional[float]:
+        return self._ocr_confidence
+    
+    @property
+    def character_count(self) -> Optional[int]:
+        return self._character_count
     
     @property
     def tricks(self) -> List['Trick']:
@@ -124,7 +142,7 @@ class Trick:
         self,
         name: Title,
         book_id: BookId,
-        effect_type: EffectType,
+        effect_type: str,  # Changed from EffectType enum to string
         description: str,
         method: Optional[str] = None,
         props: Optional[Props] = None,
@@ -160,7 +178,7 @@ class Trick:
         return self._book_id
     
     @property
-    def effect_type(self) -> EffectType:
+    def effect_type(self) -> str:
         return self._effect_type
     
     @property
@@ -237,7 +255,7 @@ class Trick:
         return hash(self._id)
     
     def __str__(self) -> str:
-        return f"{self._name} ({self._effect_type.value})"
+        return f"{self._name} ({self._effect_type})"
     
     def __repr__(self) -> str:
         return f"Trick(id={self._id}, name='{self._name}', effect_type={self._effect_type})"

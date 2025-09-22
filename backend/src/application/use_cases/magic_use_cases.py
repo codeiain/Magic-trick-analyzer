@@ -15,7 +15,7 @@ from ...domain.repositories.magic_repositories import (
 from ...domain.services.magic_analysis import (
     TrickAnalysisService, CrossReferenceService
 )
-from ...domain.value_objects.common import BookId, TrickId, EffectType
+from ...domain.value_objects.common import BookId, TrickId
 
 
 @dataclass
@@ -38,7 +38,7 @@ class ProcessBooksResponse:
 class SearchTricksRequest:
     """Request object for searching tricks."""
     query: Optional[str] = None
-    effect_type: Optional[EffectType] = None
+    effect_type: Optional[str] = None
     props: Optional[List[str]] = None
     author: Optional[str] = None
     book_title: Optional[str] = None
@@ -331,10 +331,10 @@ class GetBookStatisticsUseCase:
             "processed_books": len([book for book in books if book.is_processed()]),
         }
         
-        # Effect type distribution
+        # Effect type distribution  
         effect_distribution = {}
         for trick in all_tricks:
-            effect_type = trick.effect_type.value
+            effect_type = trick.effect_type  # effect_type is now a string, no need for .value
             effect_distribution[effect_type] = effect_distribution.get(effect_type, 0) + 1
         
         stats["effect_distribution"] = effect_distribution

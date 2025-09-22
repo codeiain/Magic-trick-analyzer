@@ -7,6 +7,7 @@ Redis Queue worker for processing OCR tasks in the OCR service.
 import os
 import sys
 import logging
+from datetime import datetime
 from redis import Redis
 from rq import Worker, Queue
 
@@ -33,7 +34,7 @@ def main():
     
     # Redis connection
     redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
-    redis_conn = Redis.from_url(redis_url)
+    redis_conn = Redis.from_url(redis_url, decode_responses=True, encoding='utf-8', encoding_errors='replace')
     
     logger.info(f"Connecting to Redis: {redis_url}")
     
@@ -51,7 +52,8 @@ def main():
     logger.info("Starting OCR worker...")
     
     # Start worker
-    worker = Worker([queue], connection=redis_conn, name=f"ocr-worker-{os.getpid()}")
+    worker_name = f"ocr-worker-{os.getpid()}-{int(datetime.now().timestamp())}"
+    worker = Worker([queue], connection=redis_conn, name=worker_name)
     logger.info(f"Worker started: {worker.name}")
     worker.work(with_scheduler=True)
 

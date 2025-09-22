@@ -5,7 +5,6 @@ import {
   SparklesIcon, 
   BookOpenIcon, 
   MagnifyingGlassIcon,
-  AcademicCapIcon,
   CogIcon,
   ChartBarIcon
 } from '@heroicons/react/24/outline';
@@ -19,7 +18,6 @@ const navigation = [
   { name: 'All Tricks', href: '/tricks', icon: SparklesIcon },
   { name: 'Books', href: '/books', icon: BookOpenIcon },
   { name: 'Search', href: '/search', icon: MagnifyingGlassIcon },
-  { name: 'Review', href: '/review', icon: AcademicCapIcon },
   { name: 'Training', href: '/training', icon: CogIcon },
 ];
 

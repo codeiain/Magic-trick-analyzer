@@ -7,7 +7,7 @@ from typing import List, Set
 from abc import ABC, abstractmethod
 
 from ..entities.magic import Book, Trick, CrossReference
-from ..value_objects.common import TrickId, EffectType, Confidence
+from ..value_objects.common import TrickId, Confidence
 
 
 class TrickAnalysisService:
@@ -99,21 +99,20 @@ class TrickAnalysisService:
         """Check if tricks have similar prop requirements."""
         return self._calculate_shared_props(trick1, trick2) > 0.6
     
-    def _get_effect_complexity_modifier(self, effect_type: EffectType) -> float:
+    def _get_effect_complexity_modifier(self, effect_type: str) -> float:
         """Get complexity modifier based on effect type."""
         complexity_map = {
-            EffectType.CARD_TRICK: 0.1,
-            EffectType.COIN_MAGIC: 0.2,
-            EffectType.CLOSE_UP: 0.1,
-            EffectType.STAGE_MAGIC: 0.5,
-            EffectType.MENTALISM: 0.3,
-            EffectType.CARD_FORCE: 0.0,
-            EffectType.VANISH: 0.2,
-            EffectType.PRODUCTION: 0.3,
-            EffectType.TRANSFORMATION: 0.4,
-            EffectType.RESTORATION: 0.4,
-            EffectType.PREDICTION: 0.3,
-            EffectType.MIND_READING: 0.4
+            "Card": 0.1,
+            "Coin": 0.2,
+            "Close-Up": 0.1,
+            "Stage Magic": 0.5,
+            "Mentalism": 0.3,
+            "Vanish": 0.2,
+            "Production": 0.3,
+            "Transformation": 0.4,
+            "Restoration": 0.4,
+            "Prediction": 0.3,
+            "Mind Reading": 0.4
         }
         return complexity_map.get(effect_type, 0.2)
 
@@ -207,7 +206,7 @@ class BookAnalysisService:
         
         return total_complexity / len(book.tricks)
     
-    def get_book_effect_distribution(self, book: Book) -> dict[EffectType, int]:
+    def get_book_effect_distribution(self, book: Book) -> dict[str, int]:
         """
         Get the distribution of effect types in a book.
         """
